@@ -252,12 +252,39 @@ body {
   padding-bottom: 60px;
 }
 
-#markdown-container.active, #raw-container.active {
+#markdown-container.active, #editor-container.active {
   display: block;
 }
 
-#raw-container {
+#editor-container {
   display: none;
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--bg-color);
+}
+
+#highlight-layer {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+#active-line-highlight {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 21px; /* 14px * 1.5 */
+  background-color: rgba(255, 255, 255, 0.05);
+  display: none;
+}
+
+#raw-container {
+  position: relative;
+  z-index: 2;
   height: 100%;
   width: 100%;
   overflow-y: auto;
@@ -268,12 +295,28 @@ body {
   font-size: 14px;
   line-height: 1.5;
   color: var(--text-color);
-  background-color: var(--bg-color);
+  background-color: transparent;
   white-space: pre-wrap;
   word-wrap: break-word;
   border: none;
   outline: none;
   resize: none;
+}
+
+#hidden-measurer {
+  position: absolute;
+  visibility: hidden;
+  padding: 30px 40px;
+  padding-bottom: 60px;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  width: 100%;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* Markdown Styles */

@@ -19,6 +19,10 @@ const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 const saveFileBtn = document.getElementById('save-file-btn');
 const saveAsBtn = document.getElementById('save-as-btn');
 const sidebar = document.querySelector('.sidebar');
+const editorContainer = document.getElementById('editor-container');
+const highlightLayer = document.getElementById('highlight-layer');
+const activeLineHighlight = document.getElementById('active-line-highlight');
+const hiddenMeasurer = document.getElementById('hidden-measurer');
 
 // Initialize Marked.js
 marked.setOptions({
@@ -266,7 +270,7 @@ function switchTab(filePath) {
   if (!filePath) {
     emptyState.classList.add('active');
     markdownContainer.classList.remove('active');
-    rawContainer.classList.remove('active');
+    editorContainer.classList.remove('active');
     toggleViewBtn.style.display = 'none';
     copyRawBtn.style.display = 'none';
     saveFileBtn.style.display = 'none';
@@ -284,14 +288,15 @@ function switchTab(filePath) {
     
     if (isRawView) {
       markdownContainer.classList.remove('active');
-      rawContainer.classList.add('active');
+      editorContainer.classList.add('active');
       copyRawBtn.style.display = 'flex';
       rawContainer.value = activeTab.content;
       setTimeout(() => {
         rawContainer.scrollTop = activeTab.scrollPos || 0;
+        updateHighlightPosition();
       }, 0);
     } else {
-      rawContainer.classList.remove('active');
+      editorContainer.classList.remove('active');
       markdownContainer.classList.add('active');
       copyRawBtn.style.display = 'none';
       let html = marked.parse(activeTab.content);
@@ -474,6 +479,25 @@ async function saveAsActiveFile() {
   }
 }
 
+function updateHighlightPosition() {
+  if (!isRawView || !activeTabPath) return;
+  const activeTab = openTabs.find(t => t.path === activeTabPath);
+  if (!activeTab) return;
+  
+  const textBefore = rawContainer.value.substring(0, rawContainer.selectionStart);
+  hiddenMeasurer.textContent = textBefore;
+  
+  const marker = document.createElement('span');
+  marker.textContent = '\u200b';
+  hiddenMeasurer.appendChild(marker);
+  
+  const cursorY = marker.offsetTop;
+  
+  activeLineHighlight.style.display = 'block';
+  activeLineHighlight.style.top = cursorY + 'px';
+  highlightLayer.scrollTop = rawContainer.scrollTop;
+}
+
 function setupEventListeners() {
   rawContainer.addEventListener('input', (e) => {
     const activeTab = openTabs.find(t => t.path === activeTabPath);
@@ -484,6 +508,13 @@ function setupEventListeners() {
         renderTabs();
       }
     }
+    updateHighlightPosition();
+  });
+
+  rawContainer.addEventListener('keyup', updateHighlightPosition);
+  rawContainer.addEventListener('click', updateHighlightPosition);
+  rawContainer.addEventListener('scroll', () => {
+    highlightLayer.scrollTop = rawContainer.scrollTop;
   });
 
   saveFileBtn.addEventListener('click', saveActiveFile);
