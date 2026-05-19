@@ -6,7 +6,7 @@ Aplikasi ini mendukung berbagai fitur lanjutan seperti manajemen tab, rendering 
 
 ---
 
-## 🚀 Fitur Utama
+## 🚀 Fitur Utama Halo
 
 - **Tab Management**: Buka hingga 10 file Markdown secara bersamaan. Posisi scroll Anda akan tetap dipertahankan saat berpindah tab.
 - **Drag and Drop**: Buka file secara instan dengan menyeret file `.md` atau `.markdown` langsung ke dalam jendela aplikasi.

@@ -15,6 +15,10 @@ const toggleViewBtn = document.getElementById('toggle-view-btn');
 const toggleViewText = document.getElementById('toggle-view-text');
 const copyRawBtn = document.getElementById('copy-raw-btn');
 const dragOverlay = document.getElementById('drag-overlay');
+const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
+const saveFileBtn = document.getElementById('save-file-btn');
+const saveAsBtn = document.getElementById('save-as-btn');
+const sidebar = document.querySelector('.sidebar');
 
 // Initialize Marked.js
 marked.setOptions({
@@ -239,7 +243,8 @@ async function openFileResult(filePath, content) {
     path: filePath,
     filename,
     content,
-    scrollPos: 0
+    scrollPos: 0,
+    isDirty: false
   };
 
   openTabs.push(newTab);
@@ -264,6 +269,8 @@ function switchTab(filePath) {
     rawContainer.classList.remove('active');
     toggleViewBtn.style.display = 'none';
     copyRawBtn.style.display = 'none';
+    saveFileBtn.style.display = 'none';
+    saveAsBtn.style.display = 'none';
     document.title = 'MD Reader';
     return;
   }
@@ -272,12 +279,14 @@ function switchTab(filePath) {
   if (activeTab) {
     emptyState.classList.remove('active');
     toggleViewBtn.style.display = 'flex';
+    saveFileBtn.style.display = 'flex';
+    saveAsBtn.style.display = 'flex';
     
     if (isRawView) {
       markdownContainer.classList.remove('active');
       rawContainer.classList.add('active');
       copyRawBtn.style.display = 'flex';
-      rawContainer.textContent = activeTab.content;
+      rawContainer.value = activeTab.content;
       setTimeout(() => {
         rawContainer.scrollTop = activeTab.scrollPos || 0;
       }, 0);
@@ -325,7 +334,7 @@ function renderTabs() {
     
     const titleSpan = document.createElement('span');
     titleSpan.className = 'tab-title';
-    titleSpan.textContent = tab.filename;
+    titleSpan.textContent = tab.filename + (tab.isDirty ? ' *' : '');
     
     const closeBtn = document.createElement('div');
     closeBtn.className = 'tab-close';
@@ -393,11 +402,20 @@ function setupKeyboardShortcuts() {
     if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'o') {
       e.preventDefault();
       handleOpenFileAction();
-    } else if (e.ctrlKey && e.key.toLowerCase() === 'w') {
+    } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      saveAsActiveFile();
+    } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      saveActiveFile();
+    } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'w') {
       e.preventDefault();
       if (activeTabPath) {
         closeTab(activeTabPath);
       }
+    } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'q') {
+      e.preventDefault();
+      toggleViewMode();
     } else if (e.ctrlKey && e.key === 'Tab') {
       e.preventDefault();
       if (openTabs.length > 1 && activeTabPath) {
@@ -420,9 +438,61 @@ function toggleViewMode() {
   if (activeTabPath) switchTab(activeTabPath);
 }
 
+async function saveActiveFile() {
+  const activeTab = openTabs.find(t => t.path === activeTabPath);
+  if (activeTab && activeTab.isDirty) {
+    try {
+      await Neutralino.filesystem.writeFile(activeTab.path, activeTab.content);
+      activeTab.isDirty = false;
+      renderTabs();
+    } catch (e) {
+      alert(`Error saving file: ${e.message}`);
+    }
+  }
+}
+
+async function saveAsActiveFile() {
+  const activeTab = openTabs.find(t => t.path === activeTabPath);
+  if (activeTab) {
+    try {
+      const newPath = await Neutralino.os.showSaveDialog('Save Markdown As', {
+        defaultPath: activeTab.filename,
+        filters: [{name: 'Markdown', extensions: ['md', 'markdown']}]
+      });
+      if (newPath) {
+        await Neutralino.filesystem.writeFile(newPath, activeTab.content);
+        activeTab.path = newPath;
+        activeTab.filename = extractFilename(newPath);
+        activeTab.isDirty = false;
+        await addRecent(newPath);
+        renderTabs();
+        document.title = `${activeTab.filename} — MD Reader`;
+      }
+    } catch (e) {
+      alert(`Error saving file: ${e.message}`);
+    }
+  }
+}
+
 function setupEventListeners() {
+  rawContainer.addEventListener('input', (e) => {
+    const activeTab = openTabs.find(t => t.path === activeTabPath);
+    if (activeTab) {
+      activeTab.content = e.target.value;
+      if (!activeTab.isDirty) {
+        activeTab.isDirty = true;
+        renderTabs();
+      }
+    }
+  });
+
+  saveFileBtn.addEventListener('click', saveActiveFile);
+  saveAsBtn.addEventListener('click', saveAsActiveFile);
   openFileBtn.addEventListener('click', handleOpenFileAction);
   toggleViewBtn.addEventListener('click', toggleViewMode);
+  toggleSidebarBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('hidden');
+  });
   copyRawBtn.addEventListener('click', () => {
     const activeTab = openTabs.find(t => t.path === activeTabPath);
     if (activeTab) {
