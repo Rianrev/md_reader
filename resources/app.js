@@ -479,23 +479,50 @@ async function saveAsActiveFile() {
   }
 }
 
+let currentCursorY = 0;
+
 function updateHighlightPosition() {
   if (!isRawView || !activeTabPath) return;
   const activeTab = openTabs.find(t => t.path === activeTabPath);
   if (!activeTab) return;
   
-  const textBefore = rawContainer.value.substring(0, rawContainer.selectionStart);
-  hiddenMeasurer.textContent = textBefore;
+  hiddenMeasurer.style.width = rawContainer.clientWidth + 'px';
   
-  const marker = document.createElement('span');
-  marker.textContent = '\u200b';
-  hiddenMeasurer.appendChild(marker);
+  const val = rawContainer.value;
+  const sel = rawContainer.selectionStart;
   
-  const cursorY = marker.offsetTop;
+  let start = val.lastIndexOf('\n', sel - 1);
+  start = start === -1 ? 0 : start + 1;
+  
+  let end = val.indexOf('\n', sel);
+  if (end === -1) end = val.length;
+  
+  const textBefore = val.substring(0, start);
+  const currentLine = val.substring(start, end).replace(/\r$/, '');
+  
+  hiddenMeasurer.innerHTML = '';
+  
+  const nodeBefore = document.createTextNode(textBefore);
+  hiddenMeasurer.appendChild(nodeBefore);
+  
+  const markerLine = document.createElement('span');
+  markerLine.textContent = currentLine || '\u200b';
+  hiddenMeasurer.appendChild(markerLine);
+  
+  currentCursorY = markerLine.offsetTop;
+  const highlightHeight = markerLine.getBoundingClientRect().height;
   
   activeLineHighlight.style.display = 'block';
-  activeLineHighlight.style.top = cursorY + 'px';
-  highlightLayer.scrollTop = rawContainer.scrollTop;
+  activeLineHighlight.style.top = '0px';
+  activeLineHighlight.style.height = highlightHeight + 'px';
+  
+  syncHighlightScroll();
+}
+
+function syncHighlightScroll() {
+  if (!isRawView || activeLineHighlight.style.display === 'none') return;
+  const viewportY = currentCursorY - rawContainer.scrollTop;
+  activeLineHighlight.style.transform = `translateY(${viewportY}px)`;
 }
 
 function setupEventListeners() {
@@ -511,11 +538,13 @@ function setupEventListeners() {
     updateHighlightPosition();
   });
 
-  rawContainer.addEventListener('keyup', updateHighlightPosition);
-  rawContainer.addEventListener('click', updateHighlightPosition);
-  rawContainer.addEventListener('scroll', () => {
-    highlightLayer.scrollTop = rawContainer.scrollTop;
+  document.addEventListener('selectionchange', () => {
+    if (document.activeElement === rawContainer) {
+      updateHighlightPosition();
+    }
   });
+  
+  rawContainer.addEventListener('scroll', syncHighlightScroll);
 
   saveFileBtn.addEventListener('click', saveActiveFile);
   saveAsBtn.addEventListener('click', saveAsActiveFile);
