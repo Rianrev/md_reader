@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: mdfile: file:; font-src 'self' data:;">
+  <title>MD Reader</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="lib/github-dark.min.css">
+</head>
+<body>
+  <div class="app-container">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>Recent Files</h2>
+      </div>
+      <ul id="recent-files-list">
+        <!-- Recent files injected here -->
+      </ul>
+    </aside>
+    <main class="main-content">
+      <header class="tabs-container">
+        <ul id="tabs-list">
+          <!-- Tabs injected here -->
+          <!-- Tabs injected here -->
+        </ul>
+        <button id="toggle-view-btn" class="btn-primary" style="display: none;" title="Toggle View (Ctrl+M)">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-9 4 18 2-9h4"></path></svg>
+          <span id="toggle-view-text">Raw</span>
+        </button>
+        <button id="copy-raw-btn" class="btn-primary" style="display: none;" title="Copy Raw Content">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          Copy All
+        </button>
+        <button id="open-file-btn" class="btn-primary" title="Open File (Ctrl+O)">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+          Open
+        </button>
+      </header>
+      <div id="content-area">
+        <div id="empty-state" class="empty-state active">
+          <div class="empty-state-content">
+            <svg viewBox="0 0 24 24" width="64" height="64" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <h2>No File Open</h2>
+            <p>Click "Open" or drag and drop a Markdown file here.</p>
+          </div>
+        </div>
+        <div id="markdown-container" class="markdown-body">
+          <!-- Markdown content injected here -->
+        </div>
+        <pre id="raw-container" class="raw-body"></pre>
+      </div>
+    </main>
+  </div>
+  <div id="drag-overlay" class="drag-overlay">Drop Markdown file here</div>
+  <script src="js/neutralino.js"></script>
+  <script src="lib/marked.min.js"></script>
+  <script src="lib/highlight.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

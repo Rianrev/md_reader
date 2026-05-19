@@ -1,0 +1,13 @@
+# Neutralinojs binaries and builds
+/bin/
+/dist/
+
+# Neutralinojs related files
+.storage
+*.log
+neutralinojs.log
+
+# Temporary/Old migration folder
+/temp_app/
+
+# Electron-based test files (optional, but let's keep them and maybe ignore them or not. Let's not ignore test files unless requested, but wait, test.js is a leftover electron file. Let's just track test.js and test-preload.js if they are part of the project, or let's ignore them if they are purely temporary). Actually, we can keep them in the repo or ignore them. Let's not ignore them unless they are generated/private. Let's just keep gitignore simple.

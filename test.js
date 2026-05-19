@@ -1,0 +1,1 @@
+const { app, BrowserWindow } = require('electron'); app.whenReady().then(() => { const win = new BrowserWindow({ webPreferences: { preload: __dirname + '/test-preload.js' } }); win.loadFile('renderer/index.html'); setTimeout(() => app.quit(), 1000); });
