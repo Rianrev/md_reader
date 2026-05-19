@@ -1,0 +1,64 @@
+name: Build and Release MD Reader
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers automatically when you push a tag like v1.0.0
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions UI tab
+    inputs:
+      tag_name:
+        description: 'Tag version for the release (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write # Required to upload release assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Neutralinojs CLI
+        run: npm install -g @neutralinojs/neu
+
+      - name: Download Neutralinojs binaries
+        run: neu update
+
+      - name: Build application packages
+        run: neu build
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir release-artifacts
+          cd dist/MDReader
+          
+          # Compress for Windows
+          zip -r ../../release-artifacts/MDReader-windows-x64.zip MDReader-win_x64.exe resources.neu
+          
+          # Compress for macOS (Universal)
+          zip -r ../../release-artifacts/MDReader-macos-universal.zip MDReader-mac_universal resources.neu
+          
+          # Compress for Linux (x64)
+          zip -r ../../release-artifacts/MDReader-linux-x64.zip MDReader-linux_x64 resources.neu
+          
+          # Compress for Linux (ARM64)
+          zip -r ../../release-artifacts/MDReader-linux-arm64.zip MDReader-linux_arm64 resources.neu
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: MD Reader ${{ github.event.inputs.tag_name || github.ref_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
