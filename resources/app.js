@@ -418,6 +418,31 @@ function showConfirmModal(message) {
   });
 }
 
+function showSaveCloseConfirmModal(message) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('save-confirm-modal');
+    const messageEl = document.getElementById('save-confirm-modal-message');
+    const saveBtn = document.getElementById('save-confirm-save');
+    const dontSaveBtn = document.getElementById('save-confirm-dontsave');
+    const cancelBtn = document.getElementById('save-confirm-cancel');
+
+    messageEl.textContent = message;
+    modal.classList.add('active');
+
+    const cleanup = (value) => {
+      modal.classList.remove('active');
+      saveBtn.onclick = null;
+      dontSaveBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(value);
+    };
+
+    saveBtn.onclick = () => cleanup('save');
+    dontSaveBtn.onclick = () => cleanup('dontsave');
+    cancelBtn.onclick = () => cleanup('cancel');
+  });
+}
+
 async function closeTab(filePath, event) {
   if (event) event.stopPropagation();
   
@@ -426,8 +451,22 @@ async function closeTab(filePath, event) {
 
   const tab = openTabs[index];
   if (tab.isDirty) {
-    const proceed = await showConfirmModal(`File "${tab.filename}" has unsaved changes. Close anyway?`);
-    if (!proceed) return;
+    const choice = await showSaveCloseConfirmModal(`Do you want to save the changes you made to ${tab.filename}?`);
+    if (choice === 'cancel') {
+      return;
+    } else if (choice === 'save') {
+      const prevActivePath = activeTabPath;
+      if (activeTabPath !== filePath) {
+        switchTab(filePath);
+      }
+      await saveActiveFile();
+      if (tab.isDirty) {
+        if (prevActivePath && prevActivePath !== filePath) {
+          switchTab(prevActivePath);
+        }
+        return;
+      }
+    }
   }
 
   openTabs.splice(index, 1);
