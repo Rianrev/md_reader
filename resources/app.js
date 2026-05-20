@@ -3,6 +3,8 @@ let openTabs = [];
 let activeTabPath = null;
 let recentFiles = [];
 let isRawView = false;
+let isSplitView = false;
+let untitledCount = 0;
 
 // DOM Elements
 const tabsList = document.getElementById('tabs-list');
@@ -10,9 +12,11 @@ const emptyState = document.getElementById('empty-state');
 const markdownContainer = document.getElementById('markdown-container');
 const rawContainer = document.getElementById('raw-container');
 const recentFilesList = document.getElementById('recent-files-list');
+const newFileBtn = document.getElementById('new-file-btn');
 const openFileBtn = document.getElementById('open-file-btn');
 const toggleViewBtn = document.getElementById('toggle-view-btn');
 const toggleViewText = document.getElementById('toggle-view-text');
+const toggleSplitBtn = document.getElementById('toggle-split-btn');
 const copyRawBtn = document.getElementById('copy-raw-btn');
 const dragOverlay = document.getElementById('drag-overlay');
 const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
@@ -191,6 +195,7 @@ async function updateRecentsSidebar() {
 }
 
 async function addRecent(filePath) {
+  if (!filePath || filePath.startsWith('untitled:')) return;
   recentFiles = recentFiles.filter(p => p !== filePath);
   recentFiles.unshift(filePath);
   if (recentFiles.length > 10) {
@@ -247,7 +252,8 @@ async function openFileResult(filePath, content) {
     path: filePath,
     filename,
     content,
-    scrollPos: 0,
+    scrollPosRaw: 0,
+    scrollPosPreview: 0,
     isDirty: false
   };
 
@@ -257,10 +263,17 @@ async function openFileResult(filePath, content) {
 }
 
 function switchTab(filePath) {
-  if (activeTabPath) {
+  if (activeTabPath && activeTabPath !== filePath) {
     const activeTab = openTabs.find(t => t.path === activeTabPath);
     if (activeTab) {
-      activeTab.scrollPos = isRawView ? rawContainer.scrollTop : markdownContainer.scrollTop;
+      if (isSplitView) {
+        activeTab.scrollPosRaw = rawContainer.scrollTop;
+        activeTab.scrollPosPreview = markdownContainer.scrollTop;
+      } else if (isRawView) {
+        activeTab.scrollPosRaw = rawContainer.scrollTop;
+      } else {
+        activeTab.scrollPosPreview = markdownContainer.scrollTop;
+      }
     }
   }
 
@@ -271,7 +284,18 @@ function switchTab(filePath) {
     emptyState.classList.add('active');
     markdownContainer.classList.remove('active');
     editorContainer.classList.remove('active');
+    
+    const contentArea = document.getElementById('content-area');
+    if (contentArea) {
+      contentArea.classList.remove('split');
+    }
+    isSplitView = false;
+    toggleSplitBtn.classList.remove('active');
+    toggleViewBtn.style.pointerEvents = 'auto';
+    toggleViewBtn.style.opacity = '1';
+
     toggleViewBtn.style.display = 'none';
+    toggleSplitBtn.style.display = 'none';
     copyRawBtn.style.display = 'none';
     saveFileBtn.style.display = 'none';
     saveAsBtn.style.display = 'none';
@@ -283,40 +307,83 @@ function switchTab(filePath) {
   if (activeTab) {
     emptyState.classList.remove('active');
     toggleViewBtn.style.display = 'flex';
+    toggleSplitBtn.style.display = 'flex';
     saveFileBtn.style.display = 'flex';
     saveAsBtn.style.display = 'flex';
+    copyRawBtn.style.display = 'flex';
     
-    if (isRawView) {
-      markdownContainer.classList.remove('active');
+    if (isSplitView) {
       editorContainer.classList.add('active');
-      copyRawBtn.style.display = 'flex';
-      rawContainer.value = activeTab.content;
-      setTimeout(() => {
-        rawContainer.scrollTop = activeTab.scrollPos || 0;
-        updateHighlightPosition();
-      }, 0);
-    } else {
-      editorContainer.classList.remove('active');
       markdownContainer.classList.add('active');
-      copyRawBtn.style.display = 'none';
+      rawContainer.value = activeTab.content;
       let html = marked.parse(activeTab.content);
       markdownContainer.innerHTML = html;
       
       setTimeout(() => {
-        markdownContainer.scrollTop = activeTab.scrollPos || 0;
-      }, 0);
+        rawContainer.scrollTop = activeTab.scrollPosRaw || 0;
+        markdownContainer.scrollTop = activeTab.scrollPosPreview || 0;
+        updateHighlightPosition();
+      }, 50);
       interceptLinks();
+    } else {
+      if (isRawView) {
+        markdownContainer.classList.remove('active');
+        editorContainer.classList.add('active');
+        rawContainer.value = activeTab.content;
+        setTimeout(() => {
+          rawContainer.scrollTop = activeTab.scrollPosRaw || 0;
+          updateHighlightPosition();
+        }, 50);
+      } else {
+        editorContainer.classList.remove('active');
+        markdownContainer.classList.add('active');
+        let html = marked.parse(activeTab.content);
+        markdownContainer.innerHTML = html;
+        
+        setTimeout(() => {
+          markdownContainer.scrollTop = activeTab.scrollPosPreview || 0;
+        }, 50);
+        interceptLinks();
+      }
     }
 
     document.title = `${activeTab.filename} — MD Reader`;
   }
 }
 
-function closeTab(filePath, event) {
+function showConfirmModal(message) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirm-modal');
+    const messageEl = document.getElementById('confirm-modal-message');
+    const yesBtn = document.getElementById('confirm-modal-yes');
+    const noBtn = document.getElementById('confirm-modal-no');
+
+    messageEl.textContent = message;
+    modal.classList.add('active');
+
+    const cleanup = (value) => {
+      modal.classList.remove('active');
+      yesBtn.onclick = null;
+      noBtn.onclick = null;
+      resolve(value);
+    };
+
+    yesBtn.onclick = () => cleanup(true);
+    noBtn.onclick = () => cleanup(false);
+  });
+}
+
+async function closeTab(filePath, event) {
   if (event) event.stopPropagation();
   
   const index = openTabs.findIndex(t => t.path === filePath);
   if (index === -1) return;
+
+  const tab = openTabs[index];
+  if (tab.isDirty) {
+    const proceed = await showConfirmModal(`File "${tab.filename}" has unsaved changes. Close anyway?`);
+    if (!proceed) return;
+  }
 
   openTabs.splice(index, 1);
   
@@ -334,22 +401,27 @@ function renderTabs() {
   tabsList.innerHTML = '';
   openTabs.forEach(tab => {
     const li = document.createElement('li');
-    li.className = `tab ${tab.path === activeTabPath ? 'active' : ''}`;
+    li.className = `tab ${tab.path === activeTabPath ? 'active' : ''} ${tab.isDirty ? 'dirty' : ''}`;
     li.title = tab.path;
     
     const titleSpan = document.createElement('span');
     titleSpan.className = 'tab-title';
-    titleSpan.textContent = tab.filename + (tab.isDirty ? ' *' : '');
+    titleSpan.textContent = tab.filename;
     
     const closeBtn = document.createElement('div');
     closeBtn.className = 'tab-close';
-    closeBtn.innerHTML = '×';
     closeBtn.title = "Close tab (Ctrl+W)";
     closeBtn.onclick = (e) => closeTab(tab.path, e);
 
     li.appendChild(titleSpan);
     li.appendChild(closeBtn);
     li.onclick = () => switchTab(tab.path);
+    li.onmousedown = (e) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        closeTab(tab.path, e);
+      }
+    };
     
     tabsList.appendChild(li);
   });
@@ -404,7 +476,10 @@ function setupDragAndDrop() {
 
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'o') {
+    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'n') {
+      e.preventDefault();
+      createNewFile();
+    } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'o') {
       e.preventDefault();
       handleOpenFileAction();
     } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
@@ -433,25 +508,86 @@ function setupKeyboardShortcuts() {
           switchTab(openTabs[nextIndex].path);
         }
       }
+    } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'e') {
+      e.preventDefault();
+      toggleSplitMode();
     }
   });
 }
 
 function toggleViewMode() {
+  if (activeTabPath) {
+    const activeTab = openTabs.find(t => t.path === activeTabPath);
+    if (activeTab) {
+      if (isRawView) {
+        activeTab.scrollPosRaw = rawContainer.scrollTop;
+      } else {
+        activeTab.scrollPosPreview = markdownContainer.scrollTop;
+      }
+    }
+  }
   isRawView = !isRawView;
   toggleViewText.textContent = isRawView ? 'Preview' : 'Raw';
   if (activeTabPath) switchTab(activeTabPath);
 }
 
+function toggleSplitMode() {
+  isSplitView = !isSplitView;
+  toggleSplitBtn.classList.toggle('active', isSplitView);
+  
+  const contentArea = document.getElementById('content-area');
+  if (isSplitView) {
+    contentArea.classList.add('split');
+    toggleViewBtn.style.pointerEvents = 'none';
+    toggleViewBtn.style.opacity = '0.4';
+  } else {
+    contentArea.classList.remove('split');
+    toggleViewBtn.style.pointerEvents = 'auto';
+    toggleViewBtn.style.opacity = '1';
+  }
+  
+  if (activeTabPath) switchTab(activeTabPath);
+}
+
+function createNewFile() {
+  if (openTabs.length >= 10) {
+    alert("Maximum of 10 tabs allowed. Please close a tab first.");
+    return;
+  }
+  untitledCount++;
+  const tempPath = `untitled:${untitledCount}`;
+  const filename = `Untitled-${untitledCount}.md`;
+  const newTab = {
+    path: tempPath,
+    filename,
+    content: '',
+    scrollPosRaw: 0,
+    scrollPosPreview: 0,
+    isDirty: false
+  };
+  openTabs.push(newTab);
+  
+  if (!isRawView && !isSplitView) {
+    isRawView = true;
+    toggleViewText.textContent = 'Preview';
+  }
+  
+  switchTab(tempPath);
+}
+
 async function saveActiveFile() {
   const activeTab = openTabs.find(t => t.path === activeTabPath);
-  if (activeTab && activeTab.isDirty) {
-    try {
-      await Neutralino.filesystem.writeFile(activeTab.path, activeTab.content);
-      activeTab.isDirty = false;
-      renderTabs();
-    } catch (e) {
-      alert(`Error saving file: ${e.message}`);
+  if (activeTab) {
+    if (activeTab.path.startsWith('untitled:')) {
+      await saveAsActiveFile();
+    } else if (activeTab.isDirty) {
+      try {
+        await Neutralino.filesystem.writeFile(activeTab.path, activeTab.content);
+        activeTab.isDirty = false;
+        renderTabs();
+      } catch (e) {
+        alert(`Error saving file: ${e.message}`);
+      }
     }
   }
 }
@@ -467,6 +603,7 @@ async function saveAsActiveFile() {
       if (newPath) {
         await Neutralino.filesystem.writeFile(newPath, activeTab.content);
         activeTab.path = newPath;
+        activeTabPath = newPath;
         activeTab.filename = extractFilename(newPath);
         activeTab.isDirty = false;
         await addRecent(newPath);
@@ -480,13 +617,14 @@ async function saveAsActiveFile() {
 }
 
 let currentCursorY = 0;
+let measurerTextNode = null;
+let measurerMarkerSpan = null;
+let lastTextBefore = null;
 
 function updateHighlightPosition() {
-  if (!isRawView || !activeTabPath) return;
+  if ((!isRawView && !isSplitView) || !activeTabPath) return;
   const activeTab = openTabs.find(t => t.path === activeTabPath);
   if (!activeTab) return;
-  
-  hiddenMeasurer.style.width = rawContainer.clientWidth + 'px';
   
   const val = rawContainer.value;
   const sel = rawContainer.selectionStart;
@@ -499,30 +637,58 @@ function updateHighlightPosition() {
   
   const textBefore = val.substring(0, start);
   const currentLine = val.substring(start, end).replace(/\r$/, '');
+  const clientWidth = rawContainer.clientWidth;
+
+  if (!measurerTextNode || !measurerMarkerSpan) {
+    hiddenMeasurer.innerHTML = '';
+    measurerTextNode = document.createTextNode('');
+    measurerMarkerSpan = document.createElement('span');
+    hiddenMeasurer.appendChild(measurerTextNode);
+    hiddenMeasurer.appendChild(measurerMarkerSpan);
+  }
+
+  const widthStr = clientWidth + 'px';
+  if (hiddenMeasurer.style.width !== widthStr) {
+    hiddenMeasurer.style.width = widthStr;
+  }
+
+  if (lastTextBefore !== textBefore) {
+    measurerTextNode.nodeValue = textBefore;
+    lastTextBefore = textBefore;
+  }
+
+  const markerText = currentLine || '\u200b';
+  if (measurerMarkerSpan.textContent !== markerText) {
+    measurerMarkerSpan.textContent = markerText;
+  }
   
-  hiddenMeasurer.innerHTML = '';
-  
-  const nodeBefore = document.createTextNode(textBefore);
-  hiddenMeasurer.appendChild(nodeBefore);
-  
-  const markerLine = document.createElement('span');
-  markerLine.textContent = currentLine || '\u200b';
-  hiddenMeasurer.appendChild(markerLine);
-  
-  currentCursorY = markerLine.offsetTop;
-  const highlightHeight = markerLine.getBoundingClientRect().height;
+  currentCursorY = measurerMarkerSpan.offsetTop;
+  const highlightHeight = measurerMarkerSpan.getBoundingClientRect().height;
   
   activeLineHighlight.style.display = 'block';
   activeLineHighlight.style.top = '0px';
-  activeLineHighlight.style.height = highlightHeight + 'px';
+  
+  const heightStr = highlightHeight + 'px';
+  if (activeLineHighlight.style.height !== heightStr) {
+    activeLineHighlight.style.height = heightStr;
+  }
   
   syncHighlightScroll();
 }
 
 function syncHighlightScroll() {
-  if (!isRawView || activeLineHighlight.style.display === 'none') return;
+  if ((!isRawView && !isSplitView) || activeLineHighlight.style.display === 'none') return;
   const viewportY = currentCursorY - rawContainer.scrollTop;
   activeLineHighlight.style.transform = `translateY(${viewportY}px)`;
+}
+
+let previewTimeout = null;
+function updateLivePreview(content) {
+  if (previewTimeout) clearTimeout(previewTimeout);
+  previewTimeout = setTimeout(() => {
+    markdownContainer.innerHTML = marked.parse(content);
+    interceptLinks();
+  }, 150);
 }
 
 function setupEventListeners() {
@@ -533,6 +699,9 @@ function setupEventListeners() {
       if (!activeTab.isDirty) {
         activeTab.isDirty = true;
         renderTabs();
+      }
+      if (isSplitView) {
+        updateLivePreview(e.target.value);
       }
     }
     updateHighlightPosition();
@@ -548,8 +717,10 @@ function setupEventListeners() {
 
   saveFileBtn.addEventListener('click', saveActiveFile);
   saveAsBtn.addEventListener('click', saveAsActiveFile);
+  newFileBtn.addEventListener('click', createNewFile);
   openFileBtn.addEventListener('click', handleOpenFileAction);
   toggleViewBtn.addEventListener('click', toggleViewMode);
+  toggleSplitBtn.addEventListener('click', toggleSplitMode);
   toggleSidebarBtn.addEventListener('click', () => {
     sidebar.classList.toggle('hidden');
   });
