@@ -511,6 +511,15 @@ function setupKeyboardShortcuts() {
     } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'e') {
       e.preventDefault();
       toggleSplitMode();
+    } else if (document.activeElement === rawContainer && e.ctrlKey && !e.shiftKey) {
+      const k = e.key.toLowerCase();
+      if (k === 'b' || k === 'i' || k === 'h' || k === 'k') {
+        e.preventDefault();
+        if (k === 'b') insertMarkdown('bold');
+        else if (k === 'i') insertMarkdown('italic');
+        else if (k === 'h') insertMarkdown('heading');
+        else if (k === 'k') insertMarkdown('link');
+      }
     }
   });
 }
@@ -590,6 +599,104 @@ async function saveActiveFile() {
       }
     }
   }
+}
+
+function insertMarkdown(type) {
+  const textarea = rawContainer;
+  if (!textarea) return;
+  
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const text = textarea.value;
+  const selected = text.substring(start, end);
+  
+  let replacement = '';
+  let selOffsetStart = 0;
+  let selOffsetEnd = 0;
+  
+  switch (type) {
+    case 'bold':
+      replacement = `**${selected || 'bold text'}**`;
+      selOffsetStart = 2;
+      selOffsetEnd = selected ? selected.length + 2 : 11;
+      break;
+    case 'italic':
+      replacement = `*${selected || 'italic text'}*`;
+      selOffsetStart = 1;
+      selOffsetEnd = selected ? selected.length + 1 : 12;
+      break;
+    case 'heading':
+      const isStartOfLine = start === 0 || text.charAt(start - 1) === '\n';
+      const prefix = isStartOfLine ? '### ' : '\n### ';
+      replacement = `${prefix}${selected || 'Heading'}`;
+      selOffsetStart = prefix.length;
+      selOffsetEnd = selected ? prefix.length + selected.length : prefix.length + 7;
+      break;
+    case 'link':
+      replacement = `[${selected || 'link text'}](https://)`;
+      selOffsetStart = 1;
+      selOffsetEnd = selected ? selected.length + 1 : 10;
+      break;
+    case 'image':
+      replacement = `![${selected || 'image alt'}](image_url)`;
+      selOffsetStart = 2;
+      selOffsetEnd = selected ? selected.length + 2 : 11;
+      break;
+    case 'inline-code':
+      replacement = `\`${selected || 'code'}\``;
+      selOffsetStart = 1;
+      selOffsetEnd = selected ? selected.length + 1 : 5;
+      break;
+    case 'code-block':
+      const codePrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
+      replacement = `${codePrefix}\`\`\`markdown\n${selected || 'code'}\n\`\`\`\n`;
+      selOffsetStart = codePrefix.length + 12;
+      selOffsetEnd = selected ? codePrefix.length + 12 + selected.length : codePrefix.length + 16;
+      break;
+    case 'quote':
+      const qPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
+      replacement = `${qPrefix}> ${selected || 'quote text'}`;
+      selOffsetStart = qPrefix.length + 2;
+      selOffsetEnd = selected ? qPrefix.length + 2 + selected.length : qPrefix.length + 12;
+      break;
+    case 'list':
+      const lPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
+      replacement = `${lPrefix}- ${selected || 'bullet item'}`;
+      selOffsetStart = lPrefix.length + 2;
+      selOffsetEnd = selected ? lPrefix.length + 2 + selected.length : lPrefix.length + 13;
+      break;
+    case 'num-list':
+      const nlPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
+      replacement = `${nlPrefix}1. ${selected || 'numbered item'}`;
+      selOffsetStart = nlPrefix.length + 3;
+      selOffsetEnd = selected ? nlPrefix.length + 3 + selected.length : nlPrefix.length + 16;
+      break;
+    case 'task':
+      const tPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
+      replacement = `${tPrefix}- [ ] ${selected || 'task item'}`;
+      selOffsetStart = tPrefix.length + 6;
+      selOffsetEnd = selected ? tPrefix.length + 6 + selected.length : tPrefix.length + 15;
+      break;
+    case 'table':
+      const tbPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
+      replacement = `${tbPrefix}| Header 1 | Header 2 |\n| -------- | -------- |\n| Cell 1   | Cell 2   |\n`;
+      selOffsetStart = tbPrefix.length + 2;
+      selOffsetEnd = tbPrefix.length + 10;
+      break;
+    case 'hr':
+      const hrPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
+      replacement = `${hrPrefix}---\n`;
+      selOffsetStart = replacement.length;
+      selOffsetEnd = replacement.length;
+      break;
+  }
+  
+  textarea.value = text.substring(0, start) + replacement + text.substring(end);
+  textarea.focus();
+  textarea.setSelectionRange(start + selOffsetStart, start + selOffsetEnd);
+  
+  const event = new Event('input', { bubbles: true });
+  textarea.dispatchEvent(event);
 }
 
 async function saveAsActiveFile() {
@@ -736,6 +843,15 @@ function setupEventListeners() {
       });
     }
   });
+  
+  document.querySelectorAll('.tb-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const type = btn.getAttribute('data-type');
+      insertMarkdown(type);
+    });
+  });
+
   setupDragAndDrop();
   setupKeyboardShortcuts();
 }
