@@ -601,7 +601,7 @@ function setupKeyboardShortcuts() {
         e.preventDefault();
         if (k === 'b') insertMarkdown('bold');
         else if (k === 'i') insertMarkdown('italic');
-        else if (k === 'h') insertMarkdown('heading');
+        else if (k === 'h') insertMarkdown('h3');
         else if (k === 'k') insertMarkdown('link');
       }
     }
@@ -705,12 +705,27 @@ function insertMarkdown(type) {
       replacement = `*${selection || 'italic text'}*`;
       selectionOffset = { start: 1, end: selection ? selection.length + 1 : 12 };
       break;
-    case 'heading':
+    case 'h1': {
+      const isStartOfLine = cursor.ch === 0;
+      const prefix = isStartOfLine ? '# ' : '\n# ';
+      replacement = `${prefix}${selection || 'Heading 1'}`;
+      selectionOffset = { start: prefix.length, end: selection ? prefix.length + selection.length : prefix.length + 9 };
+      break;
+    }
+    case 'h2': {
+      const isStartOfLine = cursor.ch === 0;
+      const prefix = isStartOfLine ? '## ' : '\n## ';
+      replacement = `${prefix}${selection || 'Heading 2'}`;
+      selectionOffset = { start: prefix.length, end: selection ? prefix.length + selection.length : prefix.length + 9 };
+      break;
+    }
+    case 'h3': {
       const isStartOfLine = cursor.ch === 0;
       const prefix = isStartOfLine ? '### ' : '\n### ';
-      replacement = `${prefix}${selection || 'Heading'}`;
-      selectionOffset = { start: prefix.length, end: selection ? prefix.length + selection.length : prefix.length + 7 };
+      replacement = `${prefix}${selection || 'Heading 3'}`;
+      selectionOffset = { start: prefix.length, end: selection ? prefix.length + selection.length : prefix.length + 9 };
       break;
+    }
     case 'link':
       replacement = `[${selection || 'link text'}](https://)`;
       selectionOffset = { start: 1, end: selection ? selection.length + 1 : 10 };
@@ -888,10 +903,37 @@ function setupEventListeners() {
     });
   });
 
+  // Heading dropdown interactivity
+  const headingBtn = document.getElementById('tb-heading-btn');
+  const headingDropdown = document.querySelector('.tb-dropdown');
+  const headingDropdownItems = document.querySelectorAll('.tb-dropdown-item');
+
+  if (headingBtn && headingDropdown) {
+    headingBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Close top menus
+      menuItems.forEach(mi => mi.classList.remove('active'));
+      isMenuOpen = false;
+      
+      headingDropdown.classList.toggle('active');
+    });
+
+    headingDropdownItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        const type = item.getAttribute('data-type');
+        if (type) insertMarkdown(type);
+        headingDropdown.classList.remove('active');
+      });
+    });
+  }
+
   // Close menus when clicking outside
   document.addEventListener('click', () => {
     menuItems.forEach(mi => mi.classList.remove('active'));
     isMenuOpen = false;
+    if (headingDropdown) {
+      headingDropdown.classList.remove('active');
+    }
   });
 
   copyRawBtn.addEventListener('click', () => {
@@ -911,7 +953,9 @@ function setupEventListeners() {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       const type = btn.getAttribute('data-type');
-      insertMarkdown(type);
+      if (type) {
+        insertMarkdown(type);
+      }
     });
   });
 

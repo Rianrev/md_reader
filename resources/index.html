@@ -102,9 +102,16 @@
             <button class="tb-btn" data-type="italic" title="Italic (Ctrl+I)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"></line><line x1="14" y1="20" x2="5" y2="20"></line><line x1="15" y1="4" x2="9" y2="20"></line></svg>
             </button>
-            <button class="tb-btn" data-type="heading" title="Heading (Ctrl+H)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="6" x2="4" y2="18"></line><line x1="20" y1="6" x2="20" y2="18"></line></svg>
-            </button>
+            <div class="tb-dropdown">
+              <button class="tb-btn" id="tb-heading-btn" title="Heading (Ctrl+H)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="6" x2="4" y2="18"></line><line x1="20" y1="6" x2="20" y2="18"></line></svg>
+              </button>
+              <div class="tb-dropdown-menu">
+                <div class="tb-dropdown-item" data-type="h1">Heading 1 (#)</div>
+                <div class="tb-dropdown-item" data-type="h2">Heading 2 (##)</div>
+                <div class="tb-dropdown-item" data-type="h3">Heading 3 (###)</div>
+              </div>
+            </div>
             <div class="tb-divider"></div>
             <button class="tb-btn" data-type="link" title="Link (Ctrl+K)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
