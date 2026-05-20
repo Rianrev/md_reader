@@ -691,12 +691,22 @@ function insertMarkdown(type) {
       break;
   }
   
-  textarea.value = text.substring(0, start) + replacement + text.substring(end);
   textarea.focus();
-  textarea.setSelectionRange(start + selOffsetStart, start + selOffsetEnd);
   
-  const event = new Event('input', { bubbles: true });
-  textarea.dispatchEvent(event);
+  let success = false;
+  try {
+    success = document.execCommand('insertText', false, replacement);
+  } catch (err) {
+    success = false;
+  }
+  
+  if (!success) {
+    textarea.value = text.substring(0, start) + replacement + text.substring(end);
+    const event = new Event('input', { bubbles: true });
+    textarea.dispatchEvent(event);
+  }
+  
+  textarea.setSelectionRange(start + selOffsetStart, start + selOffsetEnd);
 }
 
 async function saveAsActiveFile() {
