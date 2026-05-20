@@ -10,23 +10,25 @@ let untitledCount = 0;
 const tabsList = document.getElementById('tabs-list');
 const emptyState = document.getElementById('empty-state');
 const markdownContainer = document.getElementById('markdown-container');
-const rawContainer = document.getElementById('raw-container');
+const rawEditorContainer = document.getElementById('raw-editor-container');
+let editor = null;
 const recentFilesList = document.getElementById('recent-files-list');
-const newFileBtn = document.getElementById('new-file-btn');
-const openFileBtn = document.getElementById('open-file-btn');
+const newFileBtn = document.getElementById('menu-new');
+const openFileBtn = document.getElementById('menu-open');
 const toggleViewBtn = document.getElementById('toggle-view-btn');
 const toggleViewText = document.getElementById('toggle-view-text');
 const toggleSplitBtn = document.getElementById('toggle-split-btn');
 const copyRawBtn = document.getElementById('copy-raw-btn');
 const dragOverlay = document.getElementById('drag-overlay');
 const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
-const saveFileBtn = document.getElementById('save-file-btn');
-const saveAsBtn = document.getElementById('save-as-btn');
+const saveFileBtn = document.getElementById('menu-save');
+const saveAsBtn = document.getElementById('menu-save-as');
+const saveDivider = document.getElementById('menu-divider-save');
+const undoBtn = document.getElementById('menu-undo');
+const redoBtn = document.getElementById('menu-redo');
+const exitBtn = document.getElementById('menu-exit');
 const sidebar = document.querySelector('.sidebar');
 const editorContainer = document.getElementById('editor-container');
-const highlightLayer = document.getElementById('highlight-layer');
-const activeLineHighlight = document.getElementById('active-line-highlight');
-const hiddenMeasurer = document.getElementById('hidden-measurer');
 
 // Initialize Marked.js
 marked.setOptions({
@@ -136,13 +138,61 @@ window.copyCode = function(btn) {
   });
 };
 
+async function exitApp() {
+  const dirtyTabs = openTabs.filter(t => t.isDirty);
+  if (dirtyTabs.length > 0) {
+    const noun = dirtyTabs.length > 1 ? 'files' : 'file';
+    const proceed = await showConfirmModal(`You have unsaved changes in ${dirtyTabs.length} ${noun}. Exit anyway?`);
+    if (!proceed) return;
+  }
+  Neutralino.app.exit();
+}
+
 // Initialization
 async function init() {
   Neutralino.init();
-  Neutralino.events.on('windowClose', () => {
-      Neutralino.app.exit();
-  });
+  Neutralino.events.on('windowClose', exitApp);
   
+  editor = CodeMirror(rawEditorContainer, {
+    mode: {
+      name: 'markdown',
+      tokenTypeOverrides: {
+        code: 'code'
+      }
+    },
+    lineWrapping: true,
+    lineNumbers: false
+  });
+
+  editor.on('change', (cm) => {
+    const activeTab = openTabs.find(t => t.path === activeTabPath);
+    if (activeTab) {
+      const val = cm.getValue();
+      activeTab.content = val;
+      if (!activeTab.isDirty) {
+        activeTab.isDirty = true;
+        renderTabs();
+      }
+      if (isSplitView) {
+        updateLivePreview(val);
+      }
+    }
+  });
+
+  editor.on('cursorActivity', (cm) => {
+    const activeTab = openTabs.find(t => t.path === activeTabPath);
+    if (!activeTab) return;
+    
+    const cur = cm.getCursor();
+    if (activeTab.lastActiveLineNum !== undefined && activeTab.lastActiveLineNum !== null && activeTab.lastActiveLineNum !== cur.line) {
+      try {
+        cm.removeLineClass(activeTab.lastActiveLineNum, 'background', 'CodeMirror-activeline-background');
+      } catch (e) {}
+    }
+    cm.addLineClass(cur.line, 'background', 'CodeMirror-activeline-background');
+    activeTab.lastActiveLineNum = cur.line;
+  });
+
   await updateRecentsSidebar();
   setupEventListeners();
 
@@ -252,6 +302,7 @@ async function openFileResult(filePath, content) {
     path: filePath,
     filename,
     content,
+    doc: new CodeMirror.Doc(content || '', { name: 'markdown', tokenTypeOverrides: { code: 'code' } }),
     scrollPosRaw: 0,
     scrollPosPreview: 0,
     isDirty: false
@@ -266,14 +317,7 @@ function switchTab(filePath) {
   if (activeTabPath && activeTabPath !== filePath) {
     const activeTab = openTabs.find(t => t.path === activeTabPath);
     if (activeTab) {
-      if (isSplitView) {
-        activeTab.scrollPosRaw = rawContainer.scrollTop;
-        activeTab.scrollPosPreview = markdownContainer.scrollTop;
-      } else if (isRawView) {
-        activeTab.scrollPosRaw = rawContainer.scrollTop;
-      } else {
-        activeTab.scrollPosPreview = markdownContainer.scrollTop;
-      }
+      activeTab.scrollPosPreview = markdownContainer.scrollTop;
     }
   }
 
@@ -299,6 +343,7 @@ function switchTab(filePath) {
     copyRawBtn.style.display = 'none';
     saveFileBtn.style.display = 'none';
     saveAsBtn.style.display = 'none';
+    saveDivider.style.display = 'none';
     document.title = 'MD Reader';
     return;
   }
@@ -310,34 +355,34 @@ function switchTab(filePath) {
     toggleSplitBtn.style.display = 'flex';
     saveFileBtn.style.display = 'flex';
     saveAsBtn.style.display = 'flex';
+    saveDivider.style.display = 'block';
     copyRawBtn.style.display = 'flex';
+    
+    if (editor) {
+      editor.swapDoc(activeTab.doc);
+      setTimeout(() => {
+        editor.refresh();
+      }, 50);
+    }
     
     if (isSplitView) {
       editorContainer.classList.add('active');
       markdownContainer.classList.add('active');
-      rawContainer.value = activeTab.content;
-      let html = marked.parse(activeTab.content);
+      let html = marked.parse(activeTab.doc.getValue());
       markdownContainer.innerHTML = html;
       
       setTimeout(() => {
-        rawContainer.scrollTop = activeTab.scrollPosRaw || 0;
         markdownContainer.scrollTop = activeTab.scrollPosPreview || 0;
-        updateHighlightPosition();
       }, 50);
       interceptLinks();
     } else {
       if (isRawView) {
         markdownContainer.classList.remove('active');
         editorContainer.classList.add('active');
-        rawContainer.value = activeTab.content;
-        setTimeout(() => {
-          rawContainer.scrollTop = activeTab.scrollPosRaw || 0;
-          updateHighlightPosition();
-        }, 50);
       } else {
         editorContainer.classList.remove('active');
         markdownContainer.classList.add('active');
-        let html = marked.parse(activeTab.content);
+        let html = marked.parse(activeTab.doc.getValue());
         markdownContainer.innerHTML = html;
         
         setTimeout(() => {
@@ -511,7 +556,7 @@ function setupKeyboardShortcuts() {
     } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'e') {
       e.preventDefault();
       toggleSplitMode();
-    } else if (document.activeElement === rawContainer && e.ctrlKey && !e.shiftKey) {
+    } else if (editor && editor.hasFocus() && e.ctrlKey && !e.shiftKey) {
       const k = e.key.toLowerCase();
       if (k === 'b' || k === 'i' || k === 'h' || k === 'k') {
         e.preventDefault();
@@ -529,7 +574,7 @@ function toggleViewMode() {
     const activeTab = openTabs.find(t => t.path === activeTabPath);
     if (activeTab) {
       if (isRawView) {
-        activeTab.scrollPosRaw = rawContainer.scrollTop;
+        activeTab.scrollPosRaw = editor ? editor.getScrollInfo().top : 0;
       } else {
         activeTab.scrollPosPreview = markdownContainer.scrollTop;
       }
@@ -570,6 +615,7 @@ function createNewFile() {
     path: tempPath,
     filename,
     content: '',
+    doc: new CodeMirror.Doc('', { name: 'markdown', tokenTypeOverrides: { code: 'code' } }),
     scrollPosRaw: 0,
     scrollPosPreview: 0,
     isDirty: false
@@ -602,111 +648,108 @@ async function saveActiveFile() {
 }
 
 function insertMarkdown(type) {
-  const textarea = rawContainer;
-  if (!textarea) return;
+  if (!editor) return;
   
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const text = textarea.value;
-  const selected = text.substring(start, end);
+  const selection = editor.getSelection();
+  const doc = editor.getDoc();
+  const cursor = doc.getCursor();
   
   let replacement = '';
-  let selOffsetStart = 0;
-  let selOffsetEnd = 0;
+  let selectionOffset = null;
   
   switch (type) {
     case 'bold':
-      replacement = `**${selected || 'bold text'}**`;
-      selOffsetStart = 2;
-      selOffsetEnd = selected ? selected.length + 2 : 11;
+      replacement = `**${selection || 'bold text'}**`;
+      selectionOffset = { start: 2, end: selection ? selection.length + 2 : 11 };
       break;
     case 'italic':
-      replacement = `*${selected || 'italic text'}*`;
-      selOffsetStart = 1;
-      selOffsetEnd = selected ? selected.length + 1 : 12;
+      replacement = `*${selection || 'italic text'}*`;
+      selectionOffset = { start: 1, end: selection ? selection.length + 1 : 12 };
       break;
     case 'heading':
-      const isStartOfLine = start === 0 || text.charAt(start - 1) === '\n';
+      const isStartOfLine = cursor.ch === 0;
       const prefix = isStartOfLine ? '### ' : '\n### ';
-      replacement = `${prefix}${selected || 'Heading'}`;
-      selOffsetStart = prefix.length;
-      selOffsetEnd = selected ? prefix.length + selected.length : prefix.length + 7;
+      replacement = `${prefix}${selection || 'Heading'}`;
+      selectionOffset = { start: prefix.length, end: selection ? prefix.length + selection.length : prefix.length + 7 };
       break;
     case 'link':
-      replacement = `[${selected || 'link text'}](https://)`;
-      selOffsetStart = 1;
-      selOffsetEnd = selected ? selected.length + 1 : 10;
+      replacement = `[${selection || 'link text'}](https://)`;
+      selectionOffset = { start: 1, end: selection ? selection.length + 1 : 10 };
       break;
     case 'image':
-      replacement = `![${selected || 'image alt'}](image_url)`;
-      selOffsetStart = 2;
-      selOffsetEnd = selected ? selected.length + 2 : 11;
+      replacement = `![${selection || 'image alt'}](image_url)`;
+      selectionOffset = { start: 2, end: selection ? selection.length + 2 : 11 };
       break;
     case 'inline-code':
-      replacement = `\`${selected || 'code'}\``;
-      selOffsetStart = 1;
-      selOffsetEnd = selected ? selected.length + 1 : 5;
+      replacement = `\`${selection || 'code'}\``;
+      selectionOffset = { start: 1, end: selection ? selection.length + 1 : 5 };
       break;
     case 'code-block':
-      const codePrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
-      replacement = `${codePrefix}\`\`\`markdown\n${selected || 'code'}\n\`\`\`\n`;
-      selOffsetStart = codePrefix.length + 12;
-      selOffsetEnd = selected ? codePrefix.length + 12 + selected.length : codePrefix.length + 16;
+      const isSOLCode = cursor.ch === 0;
+      const codePrefix = isSOLCode ? '' : '\n';
+      replacement = `${codePrefix}\`\`\`markdown\n${selection || 'code'}\n\`\`\`\n`;
+      selectionOffset = { start: codePrefix.length + 12, end: selection ? codePrefix.length + 12 + selection.length : codePrefix.length + 16 };
       break;
     case 'quote':
-      const qPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
-      replacement = `${qPrefix}> ${selected || 'quote text'}`;
-      selOffsetStart = qPrefix.length + 2;
-      selOffsetEnd = selected ? qPrefix.length + 2 + selected.length : qPrefix.length + 12;
+      const isSOLQ = cursor.ch === 0;
+      const qPrefix = isSOLQ ? '' : '\n';
+      replacement = `${qPrefix}> ${selection || 'quote text'}`;
+      selectionOffset = { start: qPrefix.length + 2, end: selection ? qPrefix.length + 2 + selection.length : qPrefix.length + 12 };
       break;
     case 'list':
-      const lPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
-      replacement = `${lPrefix}- ${selected || 'bullet item'}`;
-      selOffsetStart = lPrefix.length + 2;
-      selOffsetEnd = selected ? lPrefix.length + 2 + selected.length : lPrefix.length + 13;
+      const isSOLL = cursor.ch === 0;
+      const lPrefix = isSOLL ? '' : '\n';
+      replacement = `${lPrefix}- ${selection || 'bullet item'}`;
+      selectionOffset = { start: lPrefix.length + 2, end: selection ? lPrefix.length + 2 + selection.length : lPrefix.length + 13 };
       break;
     case 'num-list':
-      const nlPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
-      replacement = `${nlPrefix}1. ${selected || 'numbered item'}`;
-      selOffsetStart = nlPrefix.length + 3;
-      selOffsetEnd = selected ? nlPrefix.length + 3 + selected.length : nlPrefix.length + 16;
+      const isSOLNL = cursor.ch === 0;
+      const nlPrefix = isSOLNL ? '' : '\n';
+      replacement = `${nlPrefix}1. ${selection || 'numbered item'}`;
+      selectionOffset = { start: nlPrefix.length + 3, end: selection ? nlPrefix.length + 3 + selection.length : nlPrefix.length + 16 };
       break;
     case 'task':
-      const tPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
-      replacement = `${tPrefix}- [ ] ${selected || 'task item'}`;
-      selOffsetStart = tPrefix.length + 6;
-      selOffsetEnd = selected ? tPrefix.length + 6 + selected.length : tPrefix.length + 15;
+      const isSOLT = cursor.ch === 0;
+      const tPrefix = isSOLT ? '' : '\n';
+      replacement = `${tPrefix}- [ ] ${selection || 'task item'}`;
+      selectionOffset = { start: tPrefix.length + 6, end: selection ? tPrefix.length + 6 + selection.length : tPrefix.length + 15 };
       break;
     case 'table':
-      const tbPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
+      const isSOLTb = cursor.ch === 0;
+      const tbPrefix = isSOLTb ? '' : '\n';
       replacement = `${tbPrefix}| Header 1 | Header 2 |\n| -------- | -------- |\n| Cell 1   | Cell 2   |\n`;
-      selOffsetStart = tbPrefix.length + 2;
-      selOffsetEnd = tbPrefix.length + 10;
+      selectionOffset = { start: tbPrefix.length + 2, end: tbPrefix.length + 10 };
       break;
     case 'hr':
-      const hrPrefix = start === 0 || text.charAt(start - 1) === '\n' ? '' : '\n';
+      const isSOLHr = cursor.ch === 0;
+      const hrPrefix = isSOLHr ? '' : '\n';
       replacement = `${hrPrefix}---\n`;
-      selOffsetStart = replacement.length;
-      selOffsetEnd = replacement.length;
+      selectionOffset = { start: replacement.length, end: replacement.length };
       break;
   }
   
-  textarea.focus();
+  editor.focus();
   
-  let success = false;
-  try {
-    success = document.execCommand('insertText', false, replacement);
-  } catch (err) {
-    success = false;
+  const anchor = doc.getCursor("anchor");
+  const head = doc.getCursor("head");
+  let startCursor = anchor;
+  if (anchor.line > head.line || (anchor.line === head.line && anchor.ch > head.ch)) {
+    startCursor = head;
   }
   
-  if (!success) {
-    textarea.value = text.substring(0, start) + replacement + text.substring(end);
-    const event = new Event('input', { bubbles: true });
-    textarea.dispatchEvent(event);
-  }
+  doc.replaceSelection(replacement);
   
-  textarea.setSelectionRange(start + selOffsetStart, start + selOffsetEnd);
+  if (selectionOffset) {
+    const lines = replacement.substring(0, selectionOffset.start).split('\n');
+    const startLine = startCursor.line + lines.length - 1;
+    const startCh = (lines.length > 1 ? 0 : startCursor.ch) + lines[lines.length - 1].length;
+    
+    const endLines = replacement.substring(0, selectionOffset.end).split('\n');
+    const endLine = startCursor.line + endLines.length - 1;
+    const endCh = (endLines.length > 1 ? 0 : startCursor.ch) + endLines[endLines.length - 1].length;
+    
+    doc.setSelection({ line: startLine, ch: startCh }, { line: endLine, ch: endCh });
+  }
 }
 
 async function saveAsActiveFile() {
@@ -733,71 +776,7 @@ async function saveAsActiveFile() {
   }
 }
 
-let currentCursorY = 0;
-let measurerTextNode = null;
-let measurerMarkerSpan = null;
-let lastTextBefore = null;
 
-function updateHighlightPosition() {
-  if ((!isRawView && !isSplitView) || !activeTabPath) return;
-  const activeTab = openTabs.find(t => t.path === activeTabPath);
-  if (!activeTab) return;
-  
-  const val = rawContainer.value;
-  const sel = rawContainer.selectionStart;
-  
-  let start = val.lastIndexOf('\n', sel - 1);
-  start = start === -1 ? 0 : start + 1;
-  
-  let end = val.indexOf('\n', sel);
-  if (end === -1) end = val.length;
-  
-  const textBefore = val.substring(0, start);
-  const currentLine = val.substring(start, end).replace(/\r$/, '');
-  const clientWidth = rawContainer.clientWidth;
-
-  if (!measurerTextNode || !measurerMarkerSpan) {
-    hiddenMeasurer.innerHTML = '';
-    measurerTextNode = document.createTextNode('');
-    measurerMarkerSpan = document.createElement('span');
-    hiddenMeasurer.appendChild(measurerTextNode);
-    hiddenMeasurer.appendChild(measurerMarkerSpan);
-  }
-
-  const widthStr = clientWidth + 'px';
-  if (hiddenMeasurer.style.width !== widthStr) {
-    hiddenMeasurer.style.width = widthStr;
-  }
-
-  if (lastTextBefore !== textBefore) {
-    measurerTextNode.nodeValue = textBefore;
-    lastTextBefore = textBefore;
-  }
-
-  const markerText = currentLine || '\u200b';
-  if (measurerMarkerSpan.textContent !== markerText) {
-    measurerMarkerSpan.textContent = markerText;
-  }
-  
-  currentCursorY = measurerMarkerSpan.offsetTop;
-  const highlightHeight = measurerMarkerSpan.getBoundingClientRect().height;
-  
-  activeLineHighlight.style.display = 'block';
-  activeLineHighlight.style.top = '0px';
-  
-  const heightStr = highlightHeight + 'px';
-  if (activeLineHighlight.style.height !== heightStr) {
-    activeLineHighlight.style.height = heightStr;
-  }
-  
-  syncHighlightScroll();
-}
-
-function syncHighlightScroll() {
-  if ((!isRawView && !isSplitView) || activeLineHighlight.style.display === 'none') return;
-  const viewportY = currentCursorY - rawContainer.scrollTop;
-  activeLineHighlight.style.transform = `translateY(${viewportY}px)`;
-}
 
 let previewTimeout = null;
 function updateLivePreview(content) {
@@ -809,29 +788,6 @@ function updateLivePreview(content) {
 }
 
 function setupEventListeners() {
-  rawContainer.addEventListener('input', (e) => {
-    const activeTab = openTabs.find(t => t.path === activeTabPath);
-    if (activeTab) {
-      activeTab.content = e.target.value;
-      if (!activeTab.isDirty) {
-        activeTab.isDirty = true;
-        renderTabs();
-      }
-      if (isSplitView) {
-        updateLivePreview(e.target.value);
-      }
-    }
-    updateHighlightPosition();
-  });
-
-  document.addEventListener('selectionchange', () => {
-    if (document.activeElement === rawContainer) {
-      updateHighlightPosition();
-    }
-  });
-  
-  rawContainer.addEventListener('scroll', syncHighlightScroll);
-
   saveFileBtn.addEventListener('click', saveActiveFile);
   saveAsBtn.addEventListener('click', saveAsActiveFile);
   newFileBtn.addEventListener('click', createNewFile);
@@ -841,6 +797,64 @@ function setupEventListeners() {
   toggleSidebarBtn.addEventListener('click', () => {
     sidebar.classList.toggle('hidden');
   });
+  
+  undoBtn.addEventListener('click', () => {
+    if (editor) {
+      editor.focus();
+      editor.undo();
+    }
+  });
+  
+  redoBtn.addEventListener('click', () => {
+    if (editor) {
+      editor.focus();
+      editor.redo();
+    }
+  });
+
+  exitBtn.addEventListener('click', exitApp);
+
+  // Menu bar dropdown interactivity logic
+  const menuItems = document.querySelectorAll('.menu-item');
+  let isMenuOpen = false;
+
+  menuItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      // If click was inside the dropdown menu, close it and stop toggling
+      if (e.target.closest('.dropdown-menu')) {
+        menuItems.forEach(mi => mi.classList.remove('active'));
+        isMenuOpen = false;
+        return;
+      }
+
+      e.stopPropagation();
+      const isActive = item.classList.contains('active');
+      
+      // Close all first
+      menuItems.forEach(mi => mi.classList.remove('active'));
+      
+      if (!isActive) {
+        item.classList.add('active');
+        isMenuOpen = true;
+      } else {
+        isMenuOpen = false;
+      }
+    });
+
+    item.addEventListener('mouseenter', () => {
+      if (isMenuOpen) {
+        menuItems.forEach(mi => mi.classList.remove('active'));
+        item.classList.add('active');
+      }
+    });
+  });
+
+  // Close menus when clicking outside
+  document.addEventListener('click', () => {
+    menuItems.forEach(mi => mi.classList.remove('active'));
+    isMenuOpen = false;
+  });
+
   copyRawBtn.addEventListener('click', () => {
     const activeTab = openTabs.find(t => t.path === activeTabPath);
     if (activeTab) {

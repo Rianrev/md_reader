@@ -22,11 +22,14 @@ body {
   color: var(--text-color);
   height: 100vh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-container {
   display: flex;
-  height: 100%;
+  flex: 1;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -385,58 +388,134 @@ body {
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
 }
 
-#highlight-layer {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 1;
-}
-
-#active-line-highlight {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 21px; /* 14px * 1.5 */
-  background-color: rgba(255, 255, 255, 0.05);
-  display: none;
-}
-
-#raw-container {
-  position: relative;
-  z-index: 2;
+#raw-editor-container {
   height: 100%;
   width: 100%;
-  overflow-y: auto;
-  padding: 30px 40px;
-  padding-bottom: 60px;
-  margin: 0;
-  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-color);
-  background-color: transparent;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  border: none;
-  outline: none;
-  resize: none;
 }
 
-#hidden-measurer {
-  position: absolute;
-  visibility: hidden;
-  padding: 30px 40px;
-  padding-bottom: 60px;
-  margin: 0;
+.CodeMirror {
+  height: 100% !important;
   font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
   font-size: 14px;
   line-height: 1.5;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  width: 100%;
-  pointer-events: none;
-  z-index: 0;
+  background: transparent !important;
+  color: var(--text-color) !important;
+}
+
+.CodeMirror-scroll {
+  padding: 10px 0; /* Let scroll padding be handled cleanly */
+}
+
+.CodeMirror-lines {
+  padding: 30px 40px !important; /* Spacious padding on the edges */
+}
+
+/* Custom Scrollbar for CodeMirror */
+.CodeMirror-scrollbar-filler, .CodeMirror-gutter-filler {
+  background: transparent !important;
+}
+
+.CodeMirror-vscrollbar::-webkit-scrollbar,
+.CodeMirror-hscrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.CodeMirror-vscrollbar::-webkit-scrollbar-track,
+.CodeMirror-hscrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.CodeMirror-vscrollbar::-webkit-scrollbar-thumb,
+.CodeMirror-hscrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.CodeMirror-vscrollbar::-webkit-scrollbar-thumb:hover,
+.CodeMirror-hscrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Active Line Highlight */
+.CodeMirror-activeline-background {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Custom Selection style */
+.CodeMirror-selected {
+  background: rgba(56, 189, 248, 0.2) !important;
+}
+.CodeMirror-focused .CodeMirror-selected {
+  background: rgba(56, 189, 248, 0.25) !important;
+}
+
+/* Custom Caret */
+.CodeMirror-cursor {
+  border-left: 2px solid var(--accent-color) !important;
+}
+
+/* Syntax Highlighting Colors for Custom Dark Theme */
+.cm-header {
+  color: #38BDF8 !important; /* sky-blue for headers */
+  font-weight: bold;
+}
+.cm-header-1 { font-size: 1.4em; }
+.cm-header-2 { font-size: 1.3em; }
+.cm-header-3 { font-size: 1.2em; }
+.cm-header-4, .cm-header-5, .cm-header-6 { font-size: 1.1em; }
+
+.cm-strong {
+  color: #fb7185 !important; /* rose-400 for bold */
+  font-weight: bold;
+}
+
+.cm-em {
+  color: #fcd34d !important; /* amber-300 for italic */
+  font-style: italic;
+}
+
+.cm-link {
+  color: #34d399 !important; /* emerald-400 for links */
+  text-decoration: underline;
+}
+
+.cm-url {
+  color: #a78bfa !important; /* violet-400 for URLs */
+}
+
+.cm-comment {
+  color: #6b7280 !important; /* gray-500 for blockquotes / comments */
+  font-style: italic;
+}
+
+.cm-code {
+  color: #cbd5e1 !important; /* slate-300 for code blocks and inline code */
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace !important;
+  font-style: normal !important;
+}
+
+.cm-quote {
+  color: #94a3b8 !important; /* slate-400 for quote blocks */
+}
+
+.cm-string, .cm-string-2 {
+  color: #fb923c !important; /* orange-400 for image tags / code strings */
+}
+
+.cm-keyword {
+  color: #f472b6 !important; /* pink-400 for lists/bullets */
+}
+
+.cm-variable-2, .cm-variable-3 {
+  color: #c084fc !important; /* purple-400 for list markers / codes */
+}
+
+.cm-comment.cm-code {
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: monospace;
 }
 
 /* Markdown Styles */
@@ -694,3 +773,82 @@ body {
 .btn-secondary:hover {
   background-color: rgba(255, 255, 255, 0.08);
 }
+
+/* ==========================================
+   Top Menu Bar & Dropdown Styles
+   ========================================== */
+.top-menu-bar {
+  display: flex;
+  background-color: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 10px;
+  height: 35px;
+  align-items: center;
+  user-select: none;
+  z-index: 100;
+  position: relative;
+}
+
+.menu-item {
+  position: relative;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-color);
+  opacity: 0.85;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.menu-item:hover, .menu-item.active {
+  background-color: rgba(255, 255, 255, 0.08);
+  opacity: 1;
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  min-width: 220px;
+  padding: 4px 0;
+  z-index: 110;
+  margin-top: 2px;
+}
+
+.menu-item.active .dropdown-menu {
+  display: block;
+}
+
+.dropdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--text-color);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.dropdown-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.dropdown-item .shortcut {
+  font-size: 11px;
+  opacity: 0.5;
+  margin-left: 20px;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 4px 0;
+}
+
