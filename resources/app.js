@@ -145,6 +145,9 @@ async function exitApp() {
     const proceed = await showConfirmModal(`You have unsaved changes in ${dirtyTabs.length} ${noun}. Exit anyway?`);
     if (!proceed) return;
   }
+  try {
+    await Neutralino.filesystem.removeFile('.tmp/app_instance.json');
+  } catch (e) {}
   Neutralino.app.exit();
 }
 
@@ -152,6 +155,9 @@ async function exitApp() {
 async function init() {
   Neutralino.init();
   Neutralino.events.on('windowClose', exitApp);
+  
+  const isMain = await handleSingleInstance();
+  if (!isMain) return;
   
   editor = CodeMirror(rawEditorContainer, {
     mode: {
@@ -961,6 +967,102 @@ function setupEventListeners() {
 
   setupDragAndDrop();
   setupKeyboardShortcuts();
+}
+
+async function isPidRunning(pid) {
+  try {
+    let cmd = '';
+    if (window.NL_OS === 'Windows') {
+      cmd = `tasklist /FI "PID eq ${pid}"`;
+    } else {
+      cmd = `ps -p ${pid}`;
+    }
+    const res = await Neutralino.os.execCommand(cmd);
+    return res.stdout && res.stdout.includes(pid.toString());
+  } catch (e) {
+    return false;
+  }
+}
+
+async function handleSingleInstance() {
+  try {
+    await Neutralino.filesystem.createDirectory('.tmp');
+  } catch (e) {}
+  try {
+    await Neutralino.filesystem.createDirectory('.tmp/open_queue');
+  } catch (e) {}
+
+  let argFilePath = null;
+  if (window.NL_ARGS && window.NL_ARGS.length > 1) {
+    argFilePath = window.NL_ARGS.find(arg => arg.toLowerCase().endsWith('.md') || arg.toLowerCase().endsWith('.markdown'));
+  }
+
+  let existingInstance = null;
+  try {
+    const fileContent = await Neutralino.filesystem.readFile('.tmp/app_instance.json');
+    existingInstance = JSON.parse(fileContent);
+  } catch (e) {}
+
+  if (existingInstance && existingInstance.pid) {
+    const isRunning = await isPidRunning(existingInstance.pid);
+    if (isRunning) {
+      if (argFilePath) {
+        const queueFile = `.tmp/open_queue/q_${Date.now()}_${Math.floor(Math.random() * 1000)}.json`;
+        try {
+          await Neutralino.filesystem.writeFile(queueFile, JSON.stringify({ path: argFilePath }));
+        } catch (e) {
+          console.error("Failed to write to open queue:", e);
+        }
+      }
+      Neutralino.app.exit();
+      return false;
+    }
+  }
+
+  try {
+    await Neutralino.filesystem.writeFile('.tmp/app_instance.json', JSON.stringify({ pid: window.NL_PID }));
+  } catch (e) {
+    console.error("Failed to write app instance file:", e);
+  }
+
+  try {
+    const files = await Neutralino.filesystem.readDirectory('.tmp/open_queue');
+    for (const file of files) {
+      if (file.entry !== '.' && file.entry !== '..') {
+        await Neutralino.filesystem.removeFile(`.tmp/open_queue/${file.entry}`);
+      }
+    }
+  } catch (e) {}
+
+  setInterval(async () => {
+    try {
+      const files = await Neutralino.filesystem.readDirectory('.tmp/open_queue');
+      let focused = false;
+      for (const file of files) {
+        if (file.entry.startsWith('q_') && file.type === 'FILE') {
+          const filePath = `.tmp/open_queue/${file.entry}`;
+          try {
+            const contentStr = await Neutralino.filesystem.readFile(filePath);
+            const data = JSON.parse(contentStr);
+            if (data && data.path) {
+              openFile(data.path);
+              if (!focused) {
+                await Neutralino.window.focus();
+                focused = true;
+              }
+            }
+          } catch (e) {
+            console.error("Error reading queue file:", e);
+          }
+          try {
+            await Neutralino.filesystem.removeFile(filePath);
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+  }, 500);
+
+  return true;
 }
 
 init();
