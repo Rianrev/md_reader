@@ -212,8 +212,11 @@ async function init() {
   }
 
   if (initialFilePath) {
-    openFile(initialFilePath);
+    const absPath = getAbsolutePath(initialFilePath);
+    await openFile(absPath);
   }
+
+  await Neutralino.window.show();
 }
 
 async function updateRecentsSidebar() {
