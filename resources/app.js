@@ -279,7 +279,7 @@ async function updateRecentsSidebar() {
   const toggleBtn = document.getElementById('toggle-all-recents-btn');
   if (toggleBtn) {
     toggleBtn.textContent = showAllRecents ? 'Less' : 'All';
-    if (recentFiles.length > 10) {
+    if (recentFiles.length >= 10) {
       toggleBtn.style.display = 'block';
     } else {
       toggleBtn.style.display = 'none';
