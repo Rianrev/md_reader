@@ -5,6 +5,7 @@ let recentFiles = [];
 let isRawView = false;
 let isSplitView = false;
 let untitledCount = 0;
+let showAllRecents = false;
 
 // DOM Elements
 const tabsList = document.getElementById('tabs-list');
@@ -138,7 +139,18 @@ window.copyCode = function(btn) {
   });
 };
 
+async function writeDebugLog(msg) {
+  try {
+    const dataDir = await Neutralino.os.getPath('data');
+    const debugLog = dataDir + '/MDReader/debug.log';
+    let existing = '';
+    try { existing = await Neutralino.filesystem.readFile(debugLog); } catch(e) {}
+    await Neutralino.filesystem.writeFile(debugLog, existing + new Date().toISOString() + ' | ' + msg + '\n');
+  } catch(e) {}
+}
+
 async function exitApp() {
+  await writeDebugLog(`exitApp triggered. isMainInstance=${window.isMainInstance}`);
   const dirtyTabs = openTabs.filter(t => t.isDirty);
   if (dirtyTabs.length > 0) {
     const noun = dirtyTabs.length > 1 ? 'files' : 'file';
@@ -148,9 +160,14 @@ async function exitApp() {
   if (window.isMainInstance) {
     try {
       const dataDir = await Neutralino.os.getPath('data');
-      await Neutralino.filesystem.removeFile(dataDir + '/MDReader/app_instance.json');
-    } catch (e) {}
+      const instanceFile = dataDir + '/MDReader/app_instance.json';
+      await Neutralino.filesystem.remove(instanceFile);
+      await writeDebugLog(`exitApp: successfully removed app_instance.json`);
+    } catch (e) {
+      await writeDebugLog(`exitApp: failed to remove app_instance.json: ${e.message || e}`);
+    }
   }
+  await writeDebugLog(`exitApp: calling Neutralino.app.exit()`);
   Neutralino.app.exit();
 }
 
@@ -245,7 +262,10 @@ async function updateRecentsSidebar() {
   }
   
   recentFilesList.innerHTML = '';
-  recentFiles.forEach(filePath => {
+  
+  const displayFiles = showAllRecents ? recentFiles : recentFiles.slice(0, 10);
+  
+  displayFiles.forEach(filePath => {
     const filename = extractFilename(filePath);
     const li = document.createElement('li');
     li.innerHTML = `
@@ -255,14 +275,24 @@ async function updateRecentsSidebar() {
     li.addEventListener('click', () => openFile(filePath));
     recentFilesList.appendChild(li);
   });
+
+  const toggleBtn = document.getElementById('toggle-all-recents-btn');
+  if (toggleBtn) {
+    toggleBtn.textContent = showAllRecents ? 'Less' : 'All';
+    if (recentFiles.length > 10) {
+      toggleBtn.style.display = 'block';
+    } else {
+      toggleBtn.style.display = 'none';
+    }
+  }
 }
 
 async function addRecent(filePath) {
   if (!filePath || filePath.startsWith('untitled:')) return;
   recentFiles = recentFiles.filter(p => p !== filePath);
   recentFiles.unshift(filePath);
-  if (recentFiles.length > 10) {
-    recentFiles = recentFiles.slice(0, 10);
+  if (recentFiles.length > 100) {
+    recentFiles = recentFiles.slice(0, 100);
   }
   await Neutralino.storage.setData('recents', JSON.stringify(recentFiles));
   await updateRecentsSidebar();
@@ -864,6 +894,14 @@ function setupEventListeners() {
   toggleSidebarBtn.addEventListener('click', () => {
     sidebar.classList.toggle('hidden');
   });
+
+  const toggleRecentsBtn = document.getElementById('toggle-all-recents-btn');
+  if (toggleRecentsBtn) {
+    toggleRecentsBtn.addEventListener('click', () => {
+      showAllRecents = !showAllRecents;
+      updateRecentsSidebar();
+    });
+  }
   
   undoBtn.addEventListener('click', () => {
     if (editor) {
@@ -1008,55 +1046,47 @@ async function handleSingleInstance() {
   const instanceFile = appDataDir + '/app_instance.json';
   const debugLog = appDataDir + '/debug.log';
 
-  const log = async (msg) => {
-    try {
-      let existing = '';
-      try { existing = await Neutralino.filesystem.readFile(debugLog); } catch(e) {}
-      await Neutralino.filesystem.writeFile(debugLog, existing + new Date().toISOString() + ' | ' + msg + '\n');
-    } catch(e) {}
-  };
-
   try { await Neutralino.filesystem.createDirectory(appDataDir); } catch (e) {}
   try { await Neutralino.filesystem.createDirectory(queueDir); } catch (e) {}
 
-  await log(`START: NL_PATH="${window.NL_PATH}" NL_CWD="${window.NL_CWD}" NL_PID=${window.NL_PID}`);
-  await log(`appDataDir="${appDataDir}" instanceFile="${instanceFile}"`);
+  await writeDebugLog(`START: NL_PATH="${window.NL_PATH}" NL_CWD="${window.NL_CWD}" NL_PID=${window.NL_PID}`);
+  await writeDebugLog(`appDataDir="${appDataDir}" instanceFile="${instanceFile}"`);
 
   let rawFilePath = null;
   if (window.NL_ARGS && window.NL_ARGS.length > 1) {
     rawFilePath = window.NL_ARGS.find(arg => arg.toLowerCase().endsWith('.md') || arg.toLowerCase().endsWith('.markdown'));
   }
   const argFilePath = getAbsolutePath(rawFilePath);
-  await log(`argFilePath="${argFilePath}"`);
+  await writeDebugLog(`argFilePath="${argFilePath}"`);
 
   let existingInstance = null;
   try {
     const fileContent = await Neutralino.filesystem.readFile(instanceFile);
     existingInstance = JSON.parse(fileContent);
-    await log(`existingInstance=${JSON.stringify(existingInstance)}`);
+    await writeDebugLog(`existingInstance=${JSON.stringify(existingInstance)}`);
   } catch (e) {
-    await log(`No existing instance file`);
+    await writeDebugLog(`No existing instance file`);
   }
 
   if (existingInstance && existingInstance.pid) {
     const cmd = `tasklist /FI "PID eq ${existingInstance.pid}"`;
     let rawResult = '';
     try { const r = await Neutralino.os.execCommand(cmd); rawResult = r.stdOut || r.stdout || ''; } catch(e) { rawResult = ''; }
-    await log(`tasklist: "${(rawResult || '').trim()}"`);
+    await writeDebugLog(`tasklist: "${(rawResult || '').trim()}"`);
     const isRunning = !!rawResult && rawResult.includes(existingInstance.pid.toString());
-    await log(`isRunning=${isRunning}`);
+    await writeDebugLog(`isRunning=${isRunning}`);
 
     if (isRunning) {
       if (argFilePath) {
         const queueFile = `${queueDir}/q_${Date.now()}_${Math.floor(Math.random() * 1000)}.json`;
         try {
           await Neutralino.filesystem.writeFile(queueFile, JSON.stringify({ path: argFilePath }));
-          await log(`Wrote queue file: ${queueFile}`);
+          await writeDebugLog(`Wrote queue file: ${queueFile}`);
         } catch (e) {
-          await log(`Failed to write queue: ${e}`);
+          await writeDebugLog(`Failed to write queue: ${e}`);
         }
       }
-      await log(`Exiting - deferring to existing instance`);
+      await writeDebugLog(`Exiting - deferring to existing instance`);
       Neutralino.app.exit();
       return false;
     }
@@ -1064,10 +1094,10 @@ async function handleSingleInstance() {
 
   try {
     await Neutralino.filesystem.writeFile(instanceFile, JSON.stringify({ pid: window.NL_PID }));
-    await log(`Registered main instance PID=${window.NL_PID}`);
+    await writeDebugLog(`Registered main instance PID=${window.NL_PID}`);
     window.isMainInstance = true;
   } catch (e) {
-    await log(`Failed to write instance file: ${e}`);
+    await writeDebugLog(`Failed to write instance file: ${e}`);
   }
 
   // Clear stale queue files
@@ -1075,10 +1105,17 @@ async function handleSingleInstance() {
     const files = await Neutralino.filesystem.readDirectory(queueDir);
     for (const file of files) {
       if (file.entry !== '.' && file.entry !== '..') {
-        await Neutralino.filesystem.removeFile(`${queueDir}/${file.entry}`);
+        try {
+          await Neutralino.filesystem.remove(`${queueDir}/${file.entry}`);
+          await writeDebugLog(`Stale cleanup: successfully removed ${file.entry}`);
+        } catch (e) {
+          await writeDebugLog(`Stale cleanup: failed to remove ${file.entry}: ${e.message || e}`);
+        }
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    await writeDebugLog(`Stale cleanup read directory failed: ${e.message || e}`);
+  }
 
   const processedQueueFiles = new Set();
 
@@ -1098,14 +1135,22 @@ async function handleSingleInstance() {
             const contentStr = await Neutralino.filesystem.readFile(filePath);
             const data = JSON.parse(contentStr);
             if (data && data.path) {
+              await writeDebugLog(`Polling: opening file from queue: ${data.path}`);
               openFile(data.path);
               if (!focused) {
                 await Neutralino.window.focus();
                 focused = true;
               }
             }
-          } catch (e) {}
-          try { await Neutralino.filesystem.removeFile(filePath); } catch (e) {}
+          } catch (e) {
+            await writeDebugLog(`Polling: failed to read/parse ${fileName}: ${e.message || e}`);
+          }
+          try {
+            await Neutralino.filesystem.remove(filePath);
+            await writeDebugLog(`Polling: successfully removed queue file ${fileName}`);
+          } catch (e) {
+            await writeDebugLog(`Polling: failed to remove queue file ${fileName}: ${e.message || e}`);
+          }
         }
       }
     } catch (e) {}
