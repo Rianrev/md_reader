@@ -146,7 +146,8 @@ async function exitApp() {
     if (!proceed) return;
   }
   try {
-    await Neutralino.filesystem.removeFile('.tmp/app_instance.json');
+    const appPath = window.NL_PATH.endsWith('/') || window.NL_PATH.endsWith('\\') ? window.NL_PATH.slice(0, -1) : window.NL_PATH;
+    await Neutralino.filesystem.removeFile(appPath + '/.tmp/app_instance.json');
   } catch (e) {}
   Neutralino.app.exit();
 }
@@ -969,6 +970,15 @@ function setupEventListeners() {
   setupKeyboardShortcuts();
 }
 
+function getAbsolutePath(p) {
+  if (!p) return p;
+  if (/^[a-zA-Z]:/.test(p) || p.startsWith('/') || p.startsWith('\\')) {
+    return p;
+  }
+  const cwd = window.NL_CWD.endsWith('/') || window.NL_CWD.endsWith('\\') ? window.NL_CWD : window.NL_CWD + '/';
+  return cwd + p;
+}
+
 async function isPidRunning(pid) {
   try {
     let cmd = '';
@@ -985,21 +995,27 @@ async function isPidRunning(pid) {
 }
 
 async function handleSingleInstance() {
+  const appPath = window.NL_PATH.endsWith('/') || window.NL_PATH.endsWith('\\') ? window.NL_PATH.slice(0, -1) : window.NL_PATH;
+  const tempDir = appPath + '/.tmp';
+  const queueDir = tempDir + '/open_queue';
+  const instanceFile = tempDir + '/app_instance.json';
+
   try {
-    await Neutralino.filesystem.createDirectory('.tmp');
+    await Neutralino.filesystem.createDirectory(tempDir);
   } catch (e) {}
   try {
-    await Neutralino.filesystem.createDirectory('.tmp/open_queue');
+    await Neutralino.filesystem.createDirectory(queueDir);
   } catch (e) {}
 
-  let argFilePath = null;
+  let rawFilePath = null;
   if (window.NL_ARGS && window.NL_ARGS.length > 1) {
-    argFilePath = window.NL_ARGS.find(arg => arg.toLowerCase().endsWith('.md') || arg.toLowerCase().endsWith('.markdown'));
+    rawFilePath = window.NL_ARGS.find(arg => arg.toLowerCase().endsWith('.md') || arg.toLowerCase().endsWith('.markdown'));
   }
+  const argFilePath = getAbsolutePath(rawFilePath);
 
   let existingInstance = null;
   try {
-    const fileContent = await Neutralino.filesystem.readFile('.tmp/app_instance.json');
+    const fileContent = await Neutralino.filesystem.readFile(instanceFile);
     existingInstance = JSON.parse(fileContent);
   } catch (e) {}
 
@@ -1007,7 +1023,7 @@ async function handleSingleInstance() {
     const isRunning = await isPidRunning(existingInstance.pid);
     if (isRunning) {
       if (argFilePath) {
-        const queueFile = `.tmp/open_queue/q_${Date.now()}_${Math.floor(Math.random() * 1000)}.json`;
+        const queueFile = `${queueDir}/q_${Date.now()}_${Math.floor(Math.random() * 1000)}.json`;
         try {
           await Neutralino.filesystem.writeFile(queueFile, JSON.stringify({ path: argFilePath }));
         } catch (e) {
@@ -1020,27 +1036,27 @@ async function handleSingleInstance() {
   }
 
   try {
-    await Neutralino.filesystem.writeFile('.tmp/app_instance.json', JSON.stringify({ pid: window.NL_PID }));
+    await Neutralino.filesystem.writeFile(instanceFile, JSON.stringify({ pid: window.NL_PID }));
   } catch (e) {
     console.error("Failed to write app instance file:", e);
   }
 
   try {
-    const files = await Neutralino.filesystem.readDirectory('.tmp/open_queue');
+    const files = await Neutralino.filesystem.readDirectory(queueDir);
     for (const file of files) {
       if (file.entry !== '.' && file.entry !== '..') {
-        await Neutralino.filesystem.removeFile(`.tmp/open_queue/${file.entry}`);
+        await Neutralino.filesystem.removeFile(`${queueDir}/${file.entry}`);
       }
     }
   } catch (e) {}
 
   setInterval(async () => {
     try {
-      const files = await Neutralino.filesystem.readDirectory('.tmp/open_queue');
+      const files = await Neutralino.filesystem.readDirectory(queueDir);
       let focused = false;
       for (const file of files) {
         if (file.entry.startsWith('q_') && file.type === 'FILE') {
-          const filePath = `.tmp/open_queue/${file.entry}`;
+          const filePath = `${queueDir}/${file.entry}`;
           try {
             const contentStr = await Neutralino.filesystem.readFile(filePath);
             const data = JSON.parse(contentStr);
