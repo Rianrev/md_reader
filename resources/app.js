@@ -145,20 +145,23 @@ async function exitApp() {
     const proceed = await showConfirmModal(`You have unsaved changes in ${dirtyTabs.length} ${noun}. Exit anyway?`);
     if (!proceed) return;
   }
-  try {
-    const appPath = window.NL_PATH.endsWith('/') || window.NL_PATH.endsWith('\\') ? window.NL_PATH.slice(0, -1) : window.NL_PATH;
-    await Neutralino.filesystem.removeFile(appPath + '/.tmp/app_instance.json');
-  } catch (e) {}
+  if (window.isMainInstance) {
+    try {
+      const dataDir = await Neutralino.os.getPath('data');
+      await Neutralino.filesystem.removeFile(dataDir + '/MDReader/app_instance.json');
+    } catch (e) {}
+  }
   Neutralino.app.exit();
 }
 
 // Initialization
 async function init() {
   Neutralino.init();
-  Neutralino.events.on('windowClose', exitApp);
   
   const isMain = await handleSingleInstance();
   if (!isMain) return;
+
+  Neutralino.events.on('windowClose', exitApp);
   
   editor = CodeMirror(rawEditorContainer, {
     mode: {
@@ -995,41 +998,62 @@ async function isPidRunning(pid) {
 }
 
 async function handleSingleInstance() {
-  const appPath = window.NL_PATH.endsWith('/') || window.NL_PATH.endsWith('\\') ? window.NL_PATH.slice(0, -1) : window.NL_PATH;
-  const tempDir = appPath + '/.tmp';
-  const queueDir = tempDir + '/open_queue';
-  const instanceFile = tempDir + '/app_instance.json';
+  // Use %APPDATA%/MDReader as shared path - same for dev and production instances
+  const dataDir = await Neutralino.os.getPath('data');
+  const appDataDir = dataDir + '/MDReader';
+  const queueDir = appDataDir + '/open_queue';
+  const instanceFile = appDataDir + '/app_instance.json';
+  const debugLog = appDataDir + '/debug.log';
 
-  try {
-    await Neutralino.filesystem.createDirectory(tempDir);
-  } catch (e) {}
-  try {
-    await Neutralino.filesystem.createDirectory(queueDir);
-  } catch (e) {}
+  const log = async (msg) => {
+    try {
+      let existing = '';
+      try { existing = await Neutralino.filesystem.readFile(debugLog); } catch(e) {}
+      await Neutralino.filesystem.writeFile(debugLog, existing + new Date().toISOString() + ' | ' + msg + '\n');
+    } catch(e) {}
+  };
+
+  try { await Neutralino.filesystem.createDirectory(appDataDir); } catch (e) {}
+  try { await Neutralino.filesystem.createDirectory(queueDir); } catch (e) {}
+
+  await log(`START: NL_PATH="${window.NL_PATH}" NL_CWD="${window.NL_CWD}" NL_PID=${window.NL_PID}`);
+  await log(`appDataDir="${appDataDir}" instanceFile="${instanceFile}"`);
 
   let rawFilePath = null;
   if (window.NL_ARGS && window.NL_ARGS.length > 1) {
     rawFilePath = window.NL_ARGS.find(arg => arg.toLowerCase().endsWith('.md') || arg.toLowerCase().endsWith('.markdown'));
   }
   const argFilePath = getAbsolutePath(rawFilePath);
+  await log(`argFilePath="${argFilePath}"`);
 
   let existingInstance = null;
   try {
     const fileContent = await Neutralino.filesystem.readFile(instanceFile);
     existingInstance = JSON.parse(fileContent);
-  } catch (e) {}
+    await log(`existingInstance=${JSON.stringify(existingInstance)}`);
+  } catch (e) {
+    await log(`No existing instance file`);
+  }
 
   if (existingInstance && existingInstance.pid) {
-    const isRunning = await isPidRunning(existingInstance.pid);
+    const cmd = `tasklist /FI "PID eq ${existingInstance.pid}"`;
+    let rawResult = '';
+    try { const r = await Neutralino.os.execCommand(cmd); rawResult = r.stdOut || r.stdout || ''; } catch(e) { rawResult = ''; }
+    await log(`tasklist: "${(rawResult || '').trim()}"`);
+    const isRunning = !!rawResult && rawResult.includes(existingInstance.pid.toString());
+    await log(`isRunning=${isRunning}`);
+
     if (isRunning) {
       if (argFilePath) {
         const queueFile = `${queueDir}/q_${Date.now()}_${Math.floor(Math.random() * 1000)}.json`;
         try {
           await Neutralino.filesystem.writeFile(queueFile, JSON.stringify({ path: argFilePath }));
+          await log(`Wrote queue file: ${queueFile}`);
         } catch (e) {
-          console.error("Failed to write to open queue:", e);
+          await log(`Failed to write queue: ${e}`);
         }
       }
+      await log(`Exiting - deferring to existing instance`);
       Neutralino.app.exit();
       return false;
     }
@@ -1037,10 +1061,13 @@ async function handleSingleInstance() {
 
   try {
     await Neutralino.filesystem.writeFile(instanceFile, JSON.stringify({ pid: window.NL_PID }));
+    await log(`Registered main instance PID=${window.NL_PID}`);
+    window.isMainInstance = true;
   } catch (e) {
-    console.error("Failed to write app instance file:", e);
+    await log(`Failed to write instance file: ${e}`);
   }
 
+  // Clear stale queue files
   try {
     const files = await Neutralino.filesystem.readDirectory(queueDir);
     for (const file of files) {
@@ -1050,13 +1077,20 @@ async function handleSingleInstance() {
     }
   } catch (e) {}
 
+  const processedQueueFiles = new Set();
+
+  // Poll queue for files sent by secondary instances
   setInterval(async () => {
     try {
       const files = await Neutralino.filesystem.readDirectory(queueDir);
       let focused = false;
       for (const file of files) {
         if (file.entry.startsWith('q_') && file.type === 'FILE') {
-          const filePath = `${queueDir}/${file.entry}`;
+          const fileName = file.entry;
+          if (processedQueueFiles.has(fileName)) continue;
+          processedQueueFiles.add(fileName);
+
+          const filePath = `${queueDir}/${fileName}`;
           try {
             const contentStr = await Neutralino.filesystem.readFile(filePath);
             const data = JSON.parse(contentStr);
@@ -1067,12 +1101,8 @@ async function handleSingleInstance() {
                 focused = true;
               }
             }
-          } catch (e) {
-            console.error("Error reading queue file:", e);
-          }
-          try {
-            await Neutralino.filesystem.removeFile(filePath);
           } catch (e) {}
+          try { await Neutralino.filesystem.removeFile(filePath); } catch (e) {}
         }
       }
     } catch (e) {}
