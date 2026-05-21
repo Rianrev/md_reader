@@ -30,6 +30,10 @@ const redoBtn = document.getElementById('menu-redo');
 const exitBtn = document.getElementById('menu-exit');
 const sidebar = document.querySelector('.sidebar');
 const editorContainer = document.getElementById('editor-container');
+const recentsDashboard = document.getElementById('recents-dashboard');
+const dashboardGrid = document.getElementById('dashboard-grid');
+const dashboardSearchInput = document.getElementById('dashboard-search-input');
+const closeDashboardBtn = document.getElementById('close-dashboard-btn');
 
 // Initialize Marked.js
 marked.setOptions({
@@ -278,7 +282,7 @@ async function updateRecentsSidebar() {
 
   const toggleBtn = document.getElementById('toggle-all-recents-btn');
   if (toggleBtn) {
-    toggleBtn.textContent = showAllRecents ? 'Less' : 'All';
+    toggleBtn.textContent = 'All';
     if (recentFiles.length >= 10) {
       toggleBtn.style.display = 'block';
     } else {
@@ -296,6 +300,77 @@ async function addRecent(filePath) {
   }
   await Neutralino.storage.setData('recents', JSON.stringify(recentFiles));
   await updateRecentsSidebar();
+}
+
+function showRecentsDashboard() {
+  const existingTab = openTabs.find(t => t.path === 'system:history');
+  if (!existingTab) {
+    openTabs.push({
+      path: 'system:history',
+      filename: 'File History',
+      doc: new CodeMirror.Doc(''),
+      content: '',
+      isDirty: false
+    });
+  }
+  switchTab('system:history');
+}
+
+function renderRecentsDashboardGrid(filterText = '') {
+  dashboardGrid.innerHTML = '';
+  const searchLower = filterText.toLowerCase();
+
+  const filteredRecents = recentFiles.filter(filePath => {
+    if (!filterText) return true;
+    const filename = extractFilename(filePath);
+    return filename.toLowerCase().includes(searchLower) || filePath.toLowerCase().includes(searchLower);
+  });
+
+  if (filteredRecents.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.gridColumn = '1 / -1';
+    emptyMsg.style.textAlign = 'center';
+    emptyMsg.style.padding = '40px 20px';
+    emptyMsg.style.color = '#888';
+    emptyMsg.style.fontSize = '15px';
+    emptyMsg.textContent = filterText ? 'No matching recent files found.' : 'No recent files recorded yet.';
+    dashboardGrid.appendChild(emptyMsg);
+    return;
+  }
+
+  filteredRecents.forEach(filePath => {
+    const filename = extractFilename(filePath);
+    const card = document.createElement('div');
+    card.className = 'dashboard-card';
+    
+    card.innerHTML = `
+      <button class="card-remove-btn" title="Remove from History">&times;</button>
+      <div class="card-title" title="${filename}">${filename}</div>
+      <div class="card-path" title="${filePath}">${filePath}</div>
+    `;
+
+    card.addEventListener('click', (e) => {
+      if (e.target.classList.contains('card-remove-btn')) return;
+      openFile(filePath);
+    });
+
+    const removeBtn = card.querySelector('.card-remove-btn');
+    removeBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await removeRecentFile(filePath);
+    });
+
+    dashboardGrid.appendChild(card);
+  });
+}
+
+async function removeRecentFile(filePath) {
+  recentFiles = recentFiles.filter(p => p !== filePath);
+  await Neutralino.storage.setData('recents', JSON.stringify(recentFiles));
+  await updateRecentsSidebar();
+  
+  const filterText = dashboardSearchInput ? dashboardSearchInput.value.trim() : '';
+  renderRecentsDashboardGrid(filterText);
 }
 
 function extractFilename(filePath) {
@@ -359,9 +434,13 @@ async function openFileResult(filePath, content) {
 function switchTab(filePath) {
   if (activeTabPath && activeTabPath !== filePath) {
     const activeTab = openTabs.find(t => t.path === activeTabPath);
-    if (activeTab) {
+    if (activeTab && activeTab.path !== 'system:history') {
       activeTab.scrollPosPreview = markdownContainer.scrollTop;
     }
+  }
+
+  if (filePath !== 'system:history') {
+    recentsDashboard.classList.remove('active');
   }
 
   activeTabPath = filePath;
@@ -388,6 +467,26 @@ function switchTab(filePath) {
     saveAsBtn.style.display = 'none';
     saveDivider.style.display = 'none';
     document.title = 'MD Reader';
+    return;
+  }
+
+  if (filePath === 'system:history') {
+    emptyState.classList.remove('active');
+    markdownContainer.classList.remove('active');
+    editorContainer.classList.remove('active');
+    
+    // Hide buttons not applicable to dashboard
+    toggleViewBtn.style.display = 'none';
+    toggleSplitBtn.style.display = 'none';
+    saveFileBtn.style.display = 'none';
+    saveAsBtn.style.display = 'none';
+    saveDivider.style.display = 'none';
+    copyRawBtn.style.display = 'none';
+    
+    // Show recents dashboard
+    recentsDashboard.classList.add('active');
+    renderRecentsDashboardGrid();
+    document.title = 'File History — MD Reader';
     return;
   }
 
@@ -898,8 +997,19 @@ function setupEventListeners() {
   const toggleRecentsBtn = document.getElementById('toggle-all-recents-btn');
   if (toggleRecentsBtn) {
     toggleRecentsBtn.addEventListener('click', () => {
-      showAllRecents = !showAllRecents;
-      updateRecentsSidebar();
+      showRecentsDashboard();
+    });
+  }
+
+  if (closeDashboardBtn) {
+    closeDashboardBtn.addEventListener('click', () => {
+      closeTab('system:history');
+    });
+  }
+
+  if (dashboardSearchInput) {
+    dashboardSearchInput.addEventListener('input', (e) => {
+      renderRecentsDashboardGrid(e.target.value.trim());
     });
   }
   
