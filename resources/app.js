@@ -33,7 +33,6 @@ const editorContainer = document.getElementById('editor-container');
 const recentsDashboard = document.getElementById('recents-dashboard');
 const dashboardGrid = document.getElementById('dashboard-grid');
 const dashboardSearchInput = document.getElementById('dashboard-search-input');
-const closeDashboardBtn = document.getElementById('close-dashboard-btn');
 
 // Initialize Marked.js
 marked.setOptions({
@@ -1001,11 +1000,7 @@ function setupEventListeners() {
     });
   }
 
-  if (closeDashboardBtn) {
-    closeDashboardBtn.addEventListener('click', () => {
-      closeTab('system:history');
-    });
-  }
+
 
   if (dashboardSearchInput) {
     dashboardSearchInput.addEventListener('input', (e) => {
