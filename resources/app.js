@@ -21,6 +21,7 @@ const toggleViewText = document.getElementById('toggle-view-text');
 const toggleSplitBtn = document.getElementById('toggle-split-btn');
 const copyRawBtn = document.getElementById('copy-raw-btn');
 const dragOverlay = document.getElementById('drag-overlay');
+const dragOverlayText = document.getElementById('drag-overlay-text');
 const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 const saveFileBtn = document.getElementById('menu-save');
 const saveAsBtn = document.getElementById('menu-save-as');
@@ -426,7 +427,9 @@ async function openFileResult(filePath, content) {
   };
 
   openTabs.push(newTab);
-  await addRecent(filePath);
+  if (!isVirtualFilePath(filePath)) {
+    await addRecent(filePath);
+  }
   switchTab(filePath);
 }
 
@@ -665,37 +668,244 @@ function interceptLinks() {
   });
 }
 
+function isMarkdownPath(filePath) {
+  return typeof filePath === 'string' && /\.(md|markdown)$/i.test(filePath);
+}
+
+function isMarkdownMimeType(type) {
+  if (!type) return false;
+  const normalizedType = type.toLowerCase();
+  return normalizedType === 'text/markdown' ||
+    normalizedType === 'text/x-markdown' ||
+    normalizedType === 'text/md' ||
+    normalizedType === 'application/x-markdown';
+}
+
+function isAmbiguousTextMimeType(type) {
+  if (!type) return true;
+  const normalizedType = type.toLowerCase();
+  return normalizedType === 'text/plain' || normalizedType === 'application/octet-stream';
+}
+
+function isVirtualFilePath(filePath) {
+  return typeof filePath === 'string' && (filePath.startsWith('untitled:') || filePath.startsWith('dropped:'));
+}
+
+function showDragOverlay(isAllowed = true) {
+  dragOverlay.classList.add('active');
+  dragOverlay.classList.toggle('invalid', !isAllowed);
+  if (dragOverlayText) {
+    dragOverlayText.textContent = isAllowed ? 'Drop Markdown file here' : 'Only Markdown files are allowed';
+  }
+}
+
+function hideDragOverlay() {
+  dragOverlay.classList.remove('active');
+  dragOverlay.classList.remove('invalid');
+  if (dragOverlayText) {
+    dragOverlayText.textContent = 'Drop Markdown file here';
+  }
+}
+
+function getDroppedPathsFromEvent(e) {
+  const dataTransfer = e.dataTransfer;
+  const paths = [];
+
+  if (!dataTransfer) return paths;
+
+  const uriList = dataTransfer.getData('text/uri-list');
+  if (uriList) {
+    uriList
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'))
+      .forEach(uri => {
+        try {
+          const url = new URL(uri);
+          if (url.protocol === 'file:') {
+            paths.push(decodeURIComponent(url.pathname).replace(/^\/([a-zA-Z]:)/, '$1'));
+          }
+        } catch (e) {}
+      });
+  }
+
+  Array.from(dataTransfer.files || []).forEach(file => {
+    const path = file.path || file.name;
+    if (path) paths.push(path);
+  });
+
+  return paths;
+}
+
+function getDraggedFileNames(e) {
+  const dataTransfer = e.dataTransfer;
+  const names = [];
+
+  if (!dataTransfer) return names;
+
+  Array.from(dataTransfer.items || []).forEach(item => {
+    if (item.kind !== 'file') return;
+    const file = item.getAsFile ? item.getAsFile() : null;
+    if (file?.name) names.push(file.name);
+  });
+
+  Array.from(dataTransfer.files || []).forEach(file => {
+    const name = file.path || file.name;
+    if (name) names.push(name);
+  });
+
+  return [...new Set(names)];
+}
+
+function getDraggedFileMimeTypes(e) {
+  const dataTransfer = e.dataTransfer;
+  const types = [];
+
+  if (!dataTransfer) return types;
+
+  Array.from(dataTransfer.items || []).forEach(item => {
+    if (item.kind === 'file' && item.type) {
+      types.push(item.type);
+    }
+  });
+
+  Array.from(dataTransfer.files || []).forEach(file => {
+    if (file.type) types.push(file.type);
+  });
+
+  return [...new Set(types)];
+}
+
+function getDragDropStatus(e) {
+  const names = getDraggedFileNames(e);
+  if (names.length > 0) {
+    return names.every(isMarkdownPath) ? 'allowed' : 'blocked';
+  }
+
+  const mimeTypes = getDraggedFileMimeTypes(e);
+  if (mimeTypes.length > 0) {
+    if (mimeTypes.every(isMarkdownMimeType)) return 'allowed';
+    if (mimeTypes.some(type => !isMarkdownMimeType(type) && !isAmbiguousTextMimeType(type))) {
+      return 'blocked';
+    }
+  }
+
+  return 'blocked';
+}
+
+function getDroppedPathsFromNeutralino(detail) {
+  const paths = [];
+  const entries = Array.isArray(detail) ? detail : [detail];
+
+  entries.forEach(entry => {
+    if (typeof entry === 'string') {
+      paths.push(entry);
+    } else if (entry && typeof entry === 'object') {
+      if (typeof entry.path === 'string') paths.push(entry.path);
+      if (typeof entry.file === 'string') paths.push(entry.file);
+      if (Array.isArray(entry.files)) {
+        entry.files.forEach(file => {
+          if (typeof file === 'string') paths.push(file);
+          else if (file && typeof file.path === 'string') paths.push(file.path);
+        });
+      }
+    }
+  });
+
+  return paths;
+}
+
+async function openDroppedBrowserFiles(files) {
+  let droppedFileIndex = 0;
+  for (const file of files) {
+    if (!isMarkdownPath(file.name)) continue;
+
+    try {
+      const content = await file.text();
+      const tempPath = `dropped:${Date.now()}:${droppedFileIndex++}:${file.name}`;
+      await openFileResult(tempPath, content);
+      const tab = openTabs.find(t => t.path === tempPath);
+      if (tab) {
+        tab.filename = file.name;
+        tab.isDirty = false;
+        renderTabs();
+      }
+    } catch (error) {
+      alert(`Error reading dropped file: ${error.message}`);
+    }
+  }
+}
+
+function openDroppedMarkdownFiles(paths) {
+  const uniquePaths = [...new Set(paths.filter(isMarkdownPath))];
+  uniquePaths.forEach(path => openFile(path));
+}
+
 function setupDragAndDrop() {
+  let dragOverlayTimeout = null;
+
+  const scheduleDragOverlayReset = () => {
+    if (dragOverlayTimeout) clearTimeout(dragOverlayTimeout);
+    dragOverlayTimeout = setTimeout(hideDragOverlay, 250);
+  };
+
+  const updateDragFeedback = (e) => {
+    const status = getDragDropStatus(e);
+    const isBlocked = status === 'blocked';
+    showDragOverlay(!isBlocked);
+    e.dataTransfer.dropEffect = isBlocked ? 'none' : 'copy';
+    return status;
+  };
+
+  document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    updateDragFeedback(e);
+  });
+
   document.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.dataTransfer.types.includes('Files')) {
-      dragOverlay.classList.add('active');
-    }
+    updateDragFeedback(e);
+    scheduleDragOverlayReset();
   });
 
   document.addEventListener('dragleave', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.target === dragOverlay) {
-      dragOverlay.classList.remove('active');
+    if (!e.relatedTarget) {
+      hideDragOverlay();
     }
   });
 
-  document.addEventListener('drop', (e) => {
+  document.addEventListener('drop', async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    dragOverlay.classList.remove('active');
-    // Using Neutralino's windowDrop event instead of this handler to get valid file paths
+    hideDragOverlay();
+    const paths = getDroppedPathsFromEvent(e);
+    const absolutePaths = paths.filter(path => /^(dropped:|[a-zA-Z]:[\\\/]|\/|\\\\)/.test(path));
+    const draggedFileNames = getDraggedFileNames(e);
+
+    if (draggedFileNames.length > 0 && !draggedFileNames.every(isMarkdownPath)) {
+      return;
+    }
+
+    if (absolutePaths.length > 0) {
+      openDroppedMarkdownFiles(absolutePaths);
+    } else {
+      await openDroppedBrowserFiles(Array.from(e.dataTransfer?.files || []));
+    }
+  });
+
+  window.addEventListener('dragend', hideDragOverlay);
+  window.addEventListener('blur', hideDragOverlay);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hideDragOverlay();
   });
   
   Neutralino.events.on('windowDrop', (evt) => {
-      dragOverlay.classList.remove('active');
-      evt.detail.forEach(path => {
-          if (path.toLowerCase().endsWith('.md') || path.toLowerCase().endsWith('.markdown')) {
-              openFile(path);
-          }
-      });
+    hideDragOverlay();
+    openDroppedMarkdownFiles(getDroppedPathsFromNeutralino(evt.detail));
   });
 }
 
@@ -813,7 +1023,7 @@ function createNewFile() {
 async function saveActiveFile() {
   const activeTab = openTabs.find(t => t.path === activeTabPath);
   if (activeTab) {
-    if (activeTab.path.startsWith('untitled:')) {
+    if (isVirtualFilePath(activeTab.path)) {
       await saveAsActiveFile();
     } else if (activeTab.isDirty) {
       try {
