@@ -2,6 +2,27 @@
 
 All notable changes to the MD Reader project will be documented in this file.
 
+## [1.1.1] - 2026-05-25
+
+This patch release refines editor usability, startup behavior, and recent-file navigation after the 1.1.0 feature release.
+
+### Added
+- **Offline CodeMirror Markdown Editor**: Integrated CodeMirror 5 assets locally for Markdown syntax highlighting, isolated tab history, active-line highlighting, and improved editor spacing.
+- **Save Confirmation Flow**: Added a custom Save, Don't Save, and Cancel confirmation modal when closing modified files.
+- **Heading Selection Dropdown**: Added a toolbar dropdown for inserting H1, H2, and H3 headings.
+- **File History Dashboard**: Added a searchable File History page with card removal support.
+- **Expanded Recent Files Controls**: Added All/Less controls and support for storing up to 100 recent files.
+- **Single-Instance Mode**: Added handling to prevent duplicate windows when opening files from the system.
+
+### Fixed
+- Resolved absolute instance and queue directory paths with `NL_PATH` and `NL_CWD` to avoid redundant windows.
+- Prevented single-instance polling race conditions and duplicate instance-file deletion on exit.
+- Started the window hidden until initialization completes to prevent startup flash.
+- Disabled `exitProcessOnClose` so app shutdown and instance cleanup run reliably.
+
+### Changed
+- Removed the redundant back button from the File History page.
+
 ## [1.1.0] - 2026-05-20
 
 This release elevates the application from a simple Markdown Viewer to a fully featured, highly optimized, and aesthetically premium **Markdown-specialized Text Editor**.
