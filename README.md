@@ -1,4 +1,4 @@
-# MD Reader 📖
+# MD Reader 
 
 MD Reader adalah aplikasi pembaca Markdown (.md) desktop yang sangat ringan, cepat, dan modern. Dibangun menggunakan **Neutralino.js**, aplikasi ini menawarkan performa tinggi dengan ukuran file binary yang sangat kecil dibandingkan dengan alternatif berbasis Electron.
 
@@ -6,7 +6,7 @@ Aplikasi ini mendukung berbagai fitur lanjutan seperti manajemen tab, rendering 
 
 ---
 
-## 🚀 Fitur Utama Halo
+##  Fitur Utama Halo
 
 - **Tab Management**: Buka hingga 10 file Markdown secara bersamaan. Posisi scroll Anda akan tetap dipertahankan saat berpindah tab.
 - **Drag and Drop**: Buka file secara instan dengan menyeret file `.md` atau `.markdown` langsung ke dalam jendela aplikasi.
@@ -19,7 +19,7 @@ Aplikasi ini mendukung berbagai fitur lanjutan seperti manajemen tab, rendering 
 
 ---
 
-## ⌨️ Pintasan Keyboard (Shortcuts)
+##  Pintasan Keyboard (Shortcuts)
 
 | Shortcut | Aksi |
 | :--- | :--- |
@@ -30,7 +30,7 @@ Aplikasi ini mendukung berbagai fitur lanjutan seperti manajemen tab, rendering 
 
 ---
 
-## 🛠️ Stack Teknologi
+##  Stack Teknologi
 
 Aplikasi ini dibangun menggunakan teknologi web standar dengan wrapper native ultra-ringan:
 
@@ -42,7 +42,7 @@ Aplikasi ini dibangun menggunakan teknologi web standar dengan wrapper native ul
 
 ---
 
-## 💻 Cara Menjalankan & Mengembangkan
+##  Cara Menjalankan & Mengembangkan
 
 ### Persyaratan Sistem
 Pastikan Anda sudah menginstal Node.js dan [Neutralinojs CLI](https://neutralino.js.org/docs/cli/neu-cli) (`neu`) secara global:
@@ -72,7 +72,7 @@ npm install -g @neutralinojs/neu
 
 ---
 
-## 📦 Cara Membuat Build Produksi
+##  Cara Membuat Build Produksi
 
 Untuk mengemas aplikasi menjadi aplikasi desktop standalone (.exe untuk Windows, app bundle untuk macOS, atau binary untuk Linux), jalankan perintah berikut:
 
