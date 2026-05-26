@@ -2,6 +2,14 @@
 
 All notable changes to the MD Reader project will be documented in this file.
 
+## [1.1.2] - 2026-05-26
+
+This patch release fixes window state restoration issues and window positioning behavior on file launch.
+
+### Fixed
+- **Startup Window Flash**: Disabled window state persistence (`useSavedState: false`) and added immediate window hiding on startup to prevent secondary instances from flashing a fullscreen/maximized window on launch.
+- **Foreground Focus on Open**: Ensured that the application window is reliably brought to the foreground when opening a file from File Explorer, drag-and-drop, or menu actions.
+
 ## [1.1.1] - 2026-05-25
 
 This patch release refines editor usability, startup behavior, and recent-file navigation after the 1.1.0 feature release.
