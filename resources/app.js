@@ -179,6 +179,10 @@ async function exitApp() {
 async function init() {
   Neutralino.init();
   
+  try {
+    await Neutralino.window.hide();
+  } catch (e) {}
+  
   const isMain = await handleSingleInstance();
   if (!isMain) return;
 
