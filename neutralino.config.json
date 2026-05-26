@@ -38,7 +38,8 @@
       "maximize": false,
       "hidden": true,
       "resizable": true,
-      "exitProcessOnClose": false
+      "exitProcessOnClose": false,
+      "useSavedState": false
     }
   },
   "cli": {
