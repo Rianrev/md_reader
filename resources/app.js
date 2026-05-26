@@ -394,10 +394,26 @@ async function handleOpenFileAction() {
   }
 }
 
+async function forceWindowToForeground() {
+  try {
+    await Neutralino.window.show();
+    if (await Neutralino.window.isMinimized()) {
+      await Neutralino.window.unminimize();
+    }
+    await Neutralino.window.setAlwaysOnTop(true);
+    await Neutralino.window.focus();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    await Neutralino.window.setAlwaysOnTop(false);
+  } catch (e) {
+    await writeDebugLog(`forceWindowToForeground error: ${e.message || e}`);
+  }
+}
+
 async function openFile(filePath) {
   const existingTabIndex = openTabs.findIndex(t => t.path === filePath);
   if (existingTabIndex !== -1) {
     switchTab(filePath);
+    await forceWindowToForeground();
     return;
   }
 
@@ -431,6 +447,7 @@ async function openFileResult(filePath, content) {
     await addRecent(filePath);
   }
   switchTab(filePath);
+  await forceWindowToForeground();
 }
 
 function switchTab(filePath) {
