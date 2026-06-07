@@ -994,6 +994,8 @@ body {
   height: 100% !important;
   margin: 0 !important;
   display: block;
+  border: none;
+  background: #ffffff;
 }
 
 .recents-dashboard {

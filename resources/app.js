@@ -556,7 +556,7 @@ function switchTab(filePath) {
       toggleViewBtn.style.opacity = '0.4';
       editorContainer.classList.add('active');
       markdownContainer.classList.add('active');
-      renderPreview(fileType, activeTab.doc.getValue());
+      renderPreview(fileType, activeTab.doc.getValue(), activeTab.path);
       setTimeout(() => {
         markdownContainer.scrollTop = activeTab.scrollPosPreview || 0;
       }, 50);
@@ -571,7 +571,7 @@ function switchTab(filePath) {
       } else {
         editorContainer.classList.remove('active');
         markdownContainer.classList.add('active');
-        renderPreview(fileType, activeTab.doc.getValue());
+        renderPreview(fileType, activeTab.doc.getValue(), activeTab.path);
         setTimeout(() => {
           markdownContainer.scrollTop = activeTab.scrollPosPreview || 0;
         }, 50);
@@ -1277,15 +1277,38 @@ async function saveAsActiveFile() {
 
 
 
-function renderPreview(fileType, content) {
+function buildBaseHref(filePath) {
+  if (!filePath || isVirtualFilePath(filePath)) return '';
+  const isWin = filePath.includes('\\');
+  const sep = isWin ? '\\' : '/';
+  const lastSep = filePath.lastIndexOf(sep);
+  if (lastSep === -1) return '';
+  const dir = filePath.substring(0, lastSep + 1);
+  let p = dir.replace(/\\/g, '/');
+  if (/^[a-zA-Z]:/.test(p)) p = '/' + p; // Windows drive -> /C:/...
+  return encodeURI('file://' + p);
+}
+
+function injectBaseHref(html, baseHref) {
+  if (!baseHref) return html;
+  const baseTag = `<base href="${baseHref}">`;
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head[^>]*>/i, (m) => m + baseTag);
+  }
+  return baseTag + html;
+}
+
+function renderPreview(fileType, content, filePath) {
   if (fileType === 'html') {
     markdownContainer.classList.add('html-preview-mode');
     markdownContainer.innerHTML = '';
     const iframe = document.createElement('iframe');
     iframe.className = 'html-preview';
-    iframe.sandbox = 'allow-same-origin';
+    // allow-scripts lets the page's JavaScript build its layout;
+    // allow-same-origin lets it resolve its own relative resources.
+    iframe.sandbox = 'allow-scripts allow-same-origin';
     markdownContainer.appendChild(iframe);
-    iframe.srcdoc = content;
+    iframe.srcdoc = injectBaseHref(content, buildBaseHref(filePath));
   } else {
     markdownContainer.classList.remove('html-preview-mode');
     markdownContainer.innerHTML = marked.parse(content);
@@ -1298,7 +1321,7 @@ function updateLivePreview(content) {
   previewTimeout = setTimeout(() => {
     const activeTab = openTabs.find(t => t.path === activeTabPath);
     const fileType = activeTab ? (activeTab.fileType || getFileType(activeTab.path)) : 'markdown';
-    renderPreview(fileType, content);
+    renderPreview(fileType, content, activeTab ? activeTab.path : null);
     if (fileType !== 'html') interceptLinks();
   }, 150);
 }
