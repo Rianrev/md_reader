@@ -463,10 +463,12 @@ async function openFileResult(filePath, content) {
 }
 
 function switchTab(filePath) {
+  markdownContainer.classList.remove('html-preview-mode');
+
   if (activeTabPath && activeTabPath !== filePath) {
-    const activeTab = openTabs.find(t => t.path === activeTabPath);
-    if (activeTab && activeTab.path !== 'system:history') {
-      activeTab.scrollPosPreview = markdownContainer.scrollTop;
+    const prevTab = openTabs.find(t => t.path === activeTabPath);
+    if (prevTab && prevTab.path !== 'system:history') {
+      prevTab.scrollPosPreview = markdownContainer.scrollTop;
     }
   }
 
@@ -718,8 +720,15 @@ function isSupportedTextFile(filePath) {
 }
 
 function getFileType(filePath) {
-  if (!filePath || isVirtualFilePath(filePath)) return 'markdown';
-  const ext = filePath.split('.').pop().toLowerCase();
+  if (!filePath) return 'markdown';
+  if (filePath.startsWith('untitled:')) return 'markdown';
+  // dropped: format is dropped:timestamp:index:filename.ext — extract actual filename
+  let pathToCheck = filePath;
+  if (filePath.startsWith('dropped:')) {
+    const lastColon = filePath.lastIndexOf(':');
+    pathToCheck = lastColon !== -1 ? filePath.substring(lastColon + 1) : filePath;
+  }
+  const ext = pathToCheck.split('.').pop().toLowerCase();
   if (ext === 'md' || ext === 'markdown') return 'markdown';
   if (ext === 'html' || ext === 'htm') return 'html';
   if (ext === 'xml') return 'xml';
@@ -1270,16 +1279,15 @@ async function saveAsActiveFile() {
 
 function renderPreview(fileType, content) {
   if (fileType === 'html') {
-    const existing = markdownContainer.querySelector('iframe.html-preview');
-    if (existing) existing.remove();
+    markdownContainer.classList.add('html-preview-mode');
+    markdownContainer.innerHTML = '';
     const iframe = document.createElement('iframe');
     iframe.className = 'html-preview';
     iframe.sandbox = 'allow-same-origin';
-    iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;background:#fff;';
-    markdownContainer.innerHTML = '';
     markdownContainer.appendChild(iframe);
     iframe.srcdoc = content;
   } else {
+    markdownContainer.classList.remove('html-preview-mode');
     markdownContainer.innerHTML = marked.parse(content);
   }
 }

@@ -983,7 +983,19 @@ body {
   margin: 4px 0;
 }
 
-/* Recents Dashboard Styles */
+#markdown-container.html-preview-mode {
+  padding: 0;
+  overflow: hidden;
+}
+
+#markdown-container.html-preview-mode > iframe.html-preview {
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  display: block;
+}
+
 .recents-dashboard {
   display: none;
   flex-direction: column;
