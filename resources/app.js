@@ -208,7 +208,7 @@ async function init() {
         activeTab.isDirty = true;
         renderTabs();
       }
-      if (isSplitView) {
+      if (isSplitView && hasPreview(activeTab.fileType || getFileType(activeTab.path))) {
         updateLivePreview(val);
       }
     }
@@ -233,7 +233,7 @@ async function init() {
 
   let initialFilePath = null;
   if (window.NL_ARGS && window.NL_ARGS.length > 1) {
-    initialFilePath = window.NL_ARGS.find(arg => arg.toLowerCase().endsWith('.md') || arg.toLowerCase().endsWith('.markdown'));
+    initialFilePath = window.NL_ARGS.find(arg => isSupportedTextFile(arg));
   }
 
   if (initialFilePath) {
@@ -384,8 +384,14 @@ function extractFilename(filePath) {
 }
 
 async function handleOpenFileAction() {
-  let entries = await Neutralino.os.showOpenDialog('Open Markdown', {
-    filters: [{name: 'Markdown', extensions: ['md', 'markdown']}]
+  let entries = await Neutralino.os.showOpenDialog('Open File', {
+    filters: [
+      {name: 'All Text Files', extensions: ['md', 'markdown', 'txt', 'log', 'html', 'htm', 'xml']},
+      {name: 'Markdown', extensions: ['md', 'markdown']},
+      {name: 'HTML', extensions: ['html', 'htm']},
+      {name: 'XML', extensions: ['xml']},
+      {name: 'Plain Text', extensions: ['txt', 'log']}
+    ]
   });
   if (entries.length > 0) {
     const filePath = entries[0];
@@ -436,11 +442,13 @@ async function openFileResult(filePath, content) {
   }
 
   const filename = extractFilename(filePath);
+  const fileType = getFileType(filePath);
   const newTab = {
     path: filePath,
     filename,
     content,
-    doc: new CodeMirror.Doc(content || '', { name: 'markdown', tokenTypeOverrides: { code: 'code' } }),
+    fileType,
+    doc: new CodeMirror.Doc(content || '', getCodeMirrorMode(fileType)),
     scrollPosRaw: 0,
     scrollPosPreview: 0,
     isDirty: false
@@ -516,44 +524,56 @@ function switchTab(filePath) {
   const activeTab = openTabs.find(t => t.path === filePath);
   if (activeTab) {
     emptyState.classList.remove('active');
-    toggleViewBtn.style.display = 'flex';
-    toggleSplitBtn.style.display = 'flex';
+    const fileType = activeTab.fileType || getFileType(activeTab.path);
+    const canPreview = hasPreview(fileType);
+    const contentArea = document.getElementById('content-area');
+
+    toggleViewBtn.style.display = canPreview ? 'flex' : 'none';
+    toggleSplitBtn.style.display = canPreview ? 'flex' : 'none';
     saveFileBtn.style.display = 'flex';
     saveAsBtn.style.display = 'flex';
     saveDivider.style.display = 'block';
     copyRawBtn.style.display = 'flex';
-    
+
     if (editor) {
       editor.swapDoc(activeTab.doc);
       setTimeout(() => {
         editor.refresh();
       }, 50);
     }
-    
-    if (isSplitView) {
+
+    if (!canPreview) {
+      contentArea.classList.remove('split');
+      toggleViewBtn.style.pointerEvents = 'auto';
+      toggleViewBtn.style.opacity = '1';
+      markdownContainer.classList.remove('active');
+      editorContainer.classList.add('active');
+    } else if (isSplitView) {
+      contentArea.classList.add('split');
+      toggleViewBtn.style.pointerEvents = 'none';
+      toggleViewBtn.style.opacity = '0.4';
       editorContainer.classList.add('active');
       markdownContainer.classList.add('active');
-      let html = marked.parse(activeTab.doc.getValue());
-      markdownContainer.innerHTML = html;
-      
+      renderPreview(fileType, activeTab.doc.getValue());
       setTimeout(() => {
         markdownContainer.scrollTop = activeTab.scrollPosPreview || 0;
       }, 50);
-      interceptLinks();
+      if (fileType !== 'html') interceptLinks();
     } else {
+      contentArea.classList.remove('split');
+      toggleViewBtn.style.pointerEvents = 'auto';
+      toggleViewBtn.style.opacity = '1';
       if (isRawView) {
         markdownContainer.classList.remove('active');
         editorContainer.classList.add('active');
       } else {
         editorContainer.classList.remove('active');
         markdownContainer.classList.add('active');
-        let html = marked.parse(activeTab.doc.getValue());
-        markdownContainer.innerHTML = html;
-        
+        renderPreview(fileType, activeTab.doc.getValue());
         setTimeout(() => {
           markdownContainer.scrollTop = activeTab.scrollPosPreview || 0;
         }, 50);
-        interceptLinks();
+        if (fileType !== 'html') interceptLinks();
       }
     }
 
@@ -693,6 +713,33 @@ function isMarkdownPath(filePath) {
   return typeof filePath === 'string' && /\.(md|markdown)$/i.test(filePath);
 }
 
+function isSupportedTextFile(filePath) {
+  return typeof filePath === 'string' && /\.(md|markdown|txt|log|html|htm|xml)$/i.test(filePath);
+}
+
+function getFileType(filePath) {
+  if (!filePath || isVirtualFilePath(filePath)) return 'markdown';
+  const ext = filePath.split('.').pop().toLowerCase();
+  if (ext === 'md' || ext === 'markdown') return 'markdown';
+  if (ext === 'html' || ext === 'htm') return 'html';
+  if (ext === 'xml') return 'xml';
+  if (ext === 'txt' || ext === 'log') return 'plaintext';
+  return 'plaintext';
+}
+
+function hasPreview(fileType) {
+  return fileType === 'markdown' || fileType === 'html';
+}
+
+function getCodeMirrorMode(fileType) {
+  switch (fileType) {
+    case 'markdown': return { name: 'markdown', tokenTypeOverrides: { code: 'code' } };
+    case 'html': return 'xml';
+    case 'xml': return 'xml';
+    default: return null;
+  }
+}
+
 function isMarkdownMimeType(type) {
   if (!type) return false;
   const normalizedType = type.toLowerCase();
@@ -700,6 +747,14 @@ function isMarkdownMimeType(type) {
     normalizedType === 'text/x-markdown' ||
     normalizedType === 'text/md' ||
     normalizedType === 'application/x-markdown';
+}
+
+function isSupportedMimeType(type) {
+  if (!type) return false;
+  const t = type.toLowerCase();
+  return t === 'text/markdown' || t === 'text/x-markdown' || t === 'text/md' ||
+    t === 'application/x-markdown' || t === 'text/plain' ||
+    t === 'text/html' || t === 'text/xml' || t === 'application/xml';
 }
 
 function isAmbiguousTextMimeType(type) {
@@ -716,7 +771,7 @@ function showDragOverlay(isAllowed = true) {
   dragOverlay.classList.add('active');
   dragOverlay.classList.toggle('invalid', !isAllowed);
   if (dragOverlayText) {
-    dragOverlayText.textContent = isAllowed ? 'Drop Markdown file here' : 'Only Markdown files are allowed';
+    dragOverlayText.textContent = isAllowed ? 'Drop text file here' : 'Unsupported file type';
   }
 }
 
@@ -724,7 +779,7 @@ function hideDragOverlay() {
   dragOverlay.classList.remove('active');
   dragOverlay.classList.remove('invalid');
   if (dragOverlayText) {
-    dragOverlayText.textContent = 'Drop Markdown file here';
+    dragOverlayText.textContent = 'Drop text file here';
   }
 }
 
@@ -800,13 +855,13 @@ function getDraggedFileMimeTypes(e) {
 function getDragDropStatus(e) {
   const names = getDraggedFileNames(e);
   if (names.length > 0) {
-    return names.every(isMarkdownPath) ? 'allowed' : 'blocked';
+    return names.every(isSupportedTextFile) ? 'allowed' : 'blocked';
   }
 
   const mimeTypes = getDraggedFileMimeTypes(e);
   if (mimeTypes.length > 0) {
-    if (mimeTypes.every(isMarkdownMimeType)) return 'allowed';
-    if (mimeTypes.some(type => !isMarkdownMimeType(type) && !isAmbiguousTextMimeType(type))) {
+    if (mimeTypes.every(isSupportedMimeType)) return 'allowed';
+    if (mimeTypes.some(type => !isSupportedMimeType(type) && !isAmbiguousTextMimeType(type))) {
       return 'blocked';
     }
   }
@@ -839,7 +894,7 @@ function getDroppedPathsFromNeutralino(detail) {
 async function openDroppedBrowserFiles(files) {
   let droppedFileIndex = 0;
   for (const file of files) {
-    if (!isMarkdownPath(file.name)) continue;
+    if (!isSupportedTextFile(file.name)) continue;
 
     try {
       const content = await file.text();
@@ -858,7 +913,7 @@ async function openDroppedBrowserFiles(files) {
 }
 
 function openDroppedMarkdownFiles(paths) {
-  const uniquePaths = [...new Set(paths.filter(isMarkdownPath))];
+  const uniquePaths = [...new Set(paths.filter(isSupportedTextFile))];
   uniquePaths.forEach(path => openFile(path));
 }
 
@@ -907,7 +962,7 @@ function setupDragAndDrop() {
     const absolutePaths = paths.filter(path => /^(dropped:|[a-zA-Z]:[\\\/]|\/|\\\\)/.test(path));
     const draggedFileNames = getDraggedFileNames(e);
 
-    if (draggedFileNames.length > 0 && !draggedFileNames.every(isMarkdownPath)) {
+    if (draggedFileNames.length > 0 && !draggedFileNames.every(isSupportedTextFile)) {
       return;
     }
 
@@ -984,6 +1039,7 @@ function toggleViewMode() {
   if (activeTabPath) {
     const activeTab = openTabs.find(t => t.path === activeTabPath);
     if (activeTab) {
+      if (!hasPreview(activeTab.fileType || getFileType(activeTab.path))) return;
       if (isRawView) {
         activeTab.scrollPosRaw = editor ? editor.getScrollInfo().top : 0;
       } else {
@@ -1026,6 +1082,7 @@ function createNewFile() {
     path: tempPath,
     filename,
     content: '',
+    fileType: 'markdown',
     doc: new CodeMirror.Doc('', { name: 'markdown', tokenTypeOverrides: { code: 'code' } }),
     scrollPosRaw: 0,
     scrollPosPreview: 0,
@@ -1182,13 +1239,20 @@ async function saveAsActiveFile() {
   const activeTab = openTabs.find(t => t.path === activeTabPath);
   if (activeTab) {
     try {
-      const newPath = await Neutralino.os.showSaveDialog('Save Markdown As', {
+      const newPath = await Neutralino.os.showSaveDialog('Save As', {
         defaultPath: activeTab.filename,
-        filters: [{name: 'Markdown', extensions: ['md', 'markdown']}]
+        filters: [
+          {name: 'All Text Files', extensions: ['md', 'markdown', 'txt', 'log', 'html', 'htm', 'xml']},
+          {name: 'Markdown', extensions: ['md', 'markdown']},
+          {name: 'HTML', extensions: ['html', 'htm']},
+          {name: 'XML', extensions: ['xml']},
+          {name: 'Plain Text', extensions: ['txt', 'log']}
+        ]
       });
       if (newPath) {
         await Neutralino.filesystem.writeFile(newPath, activeTab.content);
         activeTab.path = newPath;
+        activeTab.fileType = getFileType(newPath);
         activeTabPath = newPath;
         activeTab.filename = extractFilename(newPath);
         activeTab.isDirty = false;
@@ -1204,12 +1268,30 @@ async function saveAsActiveFile() {
 
 
 
+function renderPreview(fileType, content) {
+  if (fileType === 'html') {
+    const existing = markdownContainer.querySelector('iframe.html-preview');
+    if (existing) existing.remove();
+    const iframe = document.createElement('iframe');
+    iframe.className = 'html-preview';
+    iframe.sandbox = 'allow-same-origin';
+    iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;background:#fff;';
+    markdownContainer.innerHTML = '';
+    markdownContainer.appendChild(iframe);
+    iframe.srcdoc = content;
+  } else {
+    markdownContainer.innerHTML = marked.parse(content);
+  }
+}
+
 let previewTimeout = null;
 function updateLivePreview(content) {
   if (previewTimeout) clearTimeout(previewTimeout);
   previewTimeout = setTimeout(() => {
-    markdownContainer.innerHTML = marked.parse(content);
-    interceptLinks();
+    const activeTab = openTabs.find(t => t.path === activeTabPath);
+    const fileType = activeTab ? (activeTab.fileType || getFileType(activeTab.path)) : 'markdown';
+    renderPreview(fileType, content);
+    if (fileType !== 'html') interceptLinks();
   }, 150);
 }
 
@@ -1390,7 +1472,7 @@ async function handleSingleInstance() {
 
   let rawFilePath = null;
   if (window.NL_ARGS && window.NL_ARGS.length > 1) {
-    rawFilePath = window.NL_ARGS.find(arg => arg.toLowerCase().endsWith('.md') || arg.toLowerCase().endsWith('.markdown'));
+    rawFilePath = window.NL_ARGS.find(arg => isSupportedTextFile(arg));
   }
   const argFilePath = getAbsolutePath(rawFilePath);
   await writeDebugLog(`argFilePath="${argFilePath}"`);
